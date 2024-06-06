@@ -6,82 +6,48 @@
 #define ECS_ECS_COMPONENT_H_
 
 #include "types.h"
+#include "hash.h"
 
 #include <ostream>
+#include <type_traits>
+#include <memory>
 
 namespace ecs {
 
 /**
- * @brief Base struct for component containers.
- * This acts as a base type for all component containers, allowing for polymorphic storage.
+ * Any component that is added to an entity must inherit from this struct.
  */
-struct ComponentContainerBase {};
+struct ComponentInterface {
+    // when the component is removed from the entity
+    virtual void component_removed() = 0;
 
-/**
- * @brief Template struct for component containers.
- * This template struct stores a component of any type and provides access to it.
- *
- * @tparam T The type of the component to be stored.
- */
-template<typename T>
-struct ComponentContainer : public ComponentContainerBase {
-    T component;    ///< The component instance stored in the container.
+    // when the entity is activated or deactivated
+    virtual void entity_activated() = 0;
+    virtual void entity_deactivated() = 0;
 
-    /**
-     * @brief Constructs a ComponentContainer with a given component.
-     *
-     * @param p_component The component to be stored in the container.
-     */
-    explicit ComponentContainer(T& p_component)
-        : component(p_component) {};
+    // when another component is added or removed
+    virtual void other_component_added(Hash hash) = 0;
+    virtual void other_component_removed(Hash hash) = 0;
 
-    /**
-     * @brief Overloaded arrow operator to access the component's members.
-     *
-     * @return Pointer to the stored component.
-     */
-    T* operator->() {
-        return &component;
+    // get the hash of the component
+    virtual Hash get_hash() const = 0;
+};
+
+template <typename T>
+struct ComponentBaseOf : public ComponentInterface {
+    // implement static hash function for components
+    static Hash hash() {
+        return get_type_hash<T>();
     }
 
-    /**
-     * @brief Gets a reference to the stored component.
-     *
-     * @return Reference to the stored component.
-     */
-    T& get() {
-        return component;
-    }
-
-    /**
-     * @brief Conversion operator to allow conversion to a reference of the component type.
-     *
-     * @return Reference to the stored component.
-     */
-    explicit operator T&() {
-        return component;
-    }
-
-    /**
-     * @brief Overloaded stream insertion operator for the ComponentContainer.
-     *
-     * @param os The output stream.
-     * @param container The container to be outputted.
-     * @return The output stream with the component inserted.
-     */
-    friend std::ostream& operator<<(std::ostream& os, const ComponentContainer& container) {
-        os << container.component;
-        return os;
+    // override the non-static hash function to call the static one
+    virtual Hash get_hash() const override {
+        return hash();
     }
 };
 
-// If COMPONENT_SMART_POINTER is defined, the components will be stored as shared pointers
-#ifdef COMPONENT_SMART_POINTER
-using ComponentContainerPtr = std::shared_ptr<ComponentContainerBase>;
-#else
-using ComponentContainerPtr = ComponentContainerBase*;
-#endif
+using ComponentPtr = std::shared_ptr<ComponentInterface>;
 
-}    // namespace ecs
+} // namespace ecs
 
-#endif    // ECS_ECS_COMPONENT_H_
+#endif // ECS_ECS_COMPONENT_H_

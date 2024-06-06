@@ -5,7 +5,6 @@
 #ifndef F3D_FBODATA_H
 #define F3D_FBODATA_H
 
-
 #include "GLData.h"
 #include "TextureData.h"
 #include <vector>
@@ -16,8 +15,11 @@ class FBOData : public GLData {
 
     std::vector<TextureDataPtr> attachments;
 
+    // type of fbo
+    TextureType type;
+
     public:
-    FBOData();
+    FBOData(TextureType type = TextureType::TEX_2D);
     ~FBOData();
 
     public:
@@ -25,10 +27,13 @@ class FBOData : public GLData {
     void unbind() override;
 
     void create_depth_attachment(int width, int height);
-    void create_color_attachment(int width, int height, int attachmentIndex = 0);
+    void create_color_attachment(int width, int height);
 
     bool check_status();
 
 };
+
+using FBODataSPtr = std::shared_ptr<FBOData>;
+using FBODataUPtr = std::unique_ptr<FBOData>;
 
 #endif    // F3D_FBODATA_H

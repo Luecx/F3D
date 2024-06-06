@@ -11,16 +11,14 @@ set(CMAKE_CXX_STANDARD 17)
 file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.h" "src/*.c")
 
 add_executable(F3D ${SOURCES}
-        src/math/mat.h
-        src/math/mat_transform.impl
-        src/math/mat_project.impl
-        src/math/transformation.cpp
-        src/math/transformation.h
-)
+        src/ecs/ecs.cpp
+        src/components/maps.h)
 
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDOUBLE_PRECISION")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -W")
+
+target_include_directories(F3D PUBLIC "${CMAKE_SOURCE_DIR}/include/")
 
 target_link_libraries(F3D glfw OpenGL::GL)
 

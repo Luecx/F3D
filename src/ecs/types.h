@@ -26,19 +26,6 @@ struct ECS;
 struct System;
 
 /**
- * @brief Base class for component containers.
- */
-struct ComponentContainerBase;
-
-/**
- * @brief Template structure for component containers.
- *
- * @tparam T The type of the component.
- */
-template<typename T>
-struct ComponentContainer;
-
-/**
  * @brief Template structure for iterating over entities with specific component types.
  *
  * @tparam RTypes The component types required for the iteration.

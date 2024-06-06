@@ -1,7 +1,7 @@
 #include "FBOData.h"
 #include "../core/glerror.h"
 
-FBOData::FBOData() {
+FBOData::FBOData(TextureType type) : type(type) {
     glGenFramebuffers(1, &data_id);
     GL_ERROR_CHECK();
     check_status();
@@ -26,12 +26,18 @@ void FBOData::unbind() {
 }
 
 void FBOData::create_depth_attachment(int width, int height) {
-    auto attach = std::make_shared<TextureData>(TextureType::TEX_2D);
-    const void* data[1] = {nullptr};
+    auto attach = std::make_shared<TextureData>(type);
+    const void* data[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     attach->set_data(width, height, GL_DEPTH_COMPONENT, GL_FLOAT, data);
 
     bind();
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, attach->operator GLuint(), 0);
+    if (type == TextureType::TEX_2D) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, attach->operator GLuint(), 0);
+    } else if (type == TextureType::TEX_CUBE_MAP) {
+        for (unsigned int i = 0; i < 6; ++i) {
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, attach->operator GLuint(), 0);
+        }
+    }
     GL_ERROR_CHECK();
     check_status();
     unbind();
@@ -39,13 +45,19 @@ void FBOData::create_depth_attachment(int width, int height) {
     attachments.push_back(attach);
 }
 
-void FBOData::create_color_attachment(int width, int height, int attachmentIndex) {
-    auto attach = std::make_shared<TextureData>(TextureType::TEX_2D);
-    const void* data[1] = {nullptr};
+void FBOData::create_color_attachment(int width, int height) {
+    auto attach = std::make_shared<TextureData>(type);
+    const void* data[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     attach->set_data(width, height, GL_RGB, GL_UNSIGNED_BYTE, data);
 
     bind();
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + attachmentIndex, GL_TEXTURE_2D, attach->operator GLuint(), 0);
+    if (type == TextureType::TEX_2D) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, attach->operator GLuint(), 0);
+    } else if (type == TextureType::TEX_CUBE_MAP) {
+        for (unsigned int i = 0; i < 6; ++i) {
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, attach->operator GLuint(), 0);
+        }
+    }
     GL_ERROR_CHECK();
     check_status();
     unbind();

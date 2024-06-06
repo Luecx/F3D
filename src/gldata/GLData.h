@@ -5,6 +5,7 @@
 #ifndef ENGINE3D_GLDATA_H
 #define ENGINE3D_GLDATA_H
 
+#define GLFW_INCLUDE_NONE
 #include "../glad.h"
 
 class GLData {
