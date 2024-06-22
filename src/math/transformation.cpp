@@ -1,71 +1,85 @@
-//
-// Created by finn on 5/31/24.
-//
-
 #include "transformation.h"
+#include <algorithm>
+#include <memory>
+
 Transformation::Transformation(const Vec3f& position, const Vec3f& rotation, const Vec3f& scale)
     : position(position)
     , rotation(rotation)
     , scale(scale) {}
+
 Transformation::~Transformation() {
-    if (parent) {
+    if (parent.id != ecs::INVALID_ID) {
         remove_parent();
     }
     for (auto& child : children) {
-        child->remove_parent();
+        // This assumes ECS provides a way to access entities by ID and remove their parent
+        (*ecs)[child].get<Transformation>()->remove_parent();
     }
 }
+
 void Transformation::set_position(const Vec3f& position) {
     set_outdated();
     this->position = position;
 }
+
 void Transformation::set_rotation(const Vec3f& rotation) {
     set_outdated();
     this->rotation = rotation;
 }
+
 void Transformation::set_scale(const Vec3f& scale) {
     set_outdated();
     this->scale = scale;
 }
+
 Vec3f Transformation::local_position() const {
     return position;
 }
+
 Vec3f Transformation::local_xaxis() {
     this->update();
     return {local_transformation(0, 0), local_transformation(1, 0), local_transformation(2, 0)};
 }
+
 Vec3f Transformation::local_yaxis() {
     this->update();
     return {local_transformation(0, 1), local_transformation(1, 1), local_transformation(2, 1)};
 }
+
 Vec3f Transformation::local_zaxis() {
     this->update();
     return {local_transformation(0, 2), local_transformation(1, 2), local_transformation(2, 2)};
 }
+
 Vec3f Transformation::global_position() {
     this->update();
     return {global_transformation(0, 3), global_transformation(1, 3), global_transformation(2, 3)};
 }
+
 Vec3f Transformation::global_xaxis() {
     this->update();
     return {global_transformation(0, 0), global_transformation(1, 0), global_transformation(2, 0)};
 }
+
 Vec3f Transformation::global_yaxis() {
     this->update();
     return {global_transformation(0, 1), global_transformation(1, 1), global_transformation(2, 1)};
 }
+
 Vec3f Transformation::global_zaxis() {
     this->update();
     return {global_transformation(0, 2), global_transformation(1, 2), global_transformation(2, 2)};
 }
+
 void Transformation::set_outdated() {
     if (!outdated) {
         outdated = true;
         for (auto& child : children) {
-            child->set_outdated();
+            (*ecs)[child].get<Transformation>()->set_outdated();
         }
     }
 }
+
 void Transformation::update() {
     if (outdated) {
         // local transformation
@@ -77,9 +91,10 @@ void Transformation::update() {
         local_transformation.scale_3d(scale);
 
         // global transformation
-        if (parent) {
-            parent->update();
-            global_transformation = parent->global_transformation.matmul(local_transformation);
+        if (parent.id != ecs::INVALID_ID) {
+            auto* parent_transform = ecs->at(parent).get<Transformation>();
+            parent_transform->update();
+            global_transformation = parent_transform->global_transformation * local_transformation;
         } else {
             global_transformation = local_transformation;
         }
@@ -87,36 +102,52 @@ void Transformation::update() {
         outdated = false;
     }
 }
+
 bool Transformation::remove_parent() {
-    if (this->parent == nullptr) {
+    if (parent.id == ecs::INVALID_ID) {
         return false;
     }
-    // go through the parent's children and remove this child. consider problem with shared_ptr
-    this->parent->children.erase(std::remove_if(this->parent->children.begin(), this->parent->children.end(), [this](std::shared_ptr<Transformation> child) { return child.get() == this; }),
-                                 this->parent->children.end());
 
-    this->parent = nullptr;
+    auto* parent_transform = ecs->at(parent).get<Transformation>();
+    parent_transform->children.erase(std::remove(parent_transform->children.begin(),
+                                                 parent_transform->children.end(), this->component_id.id),
+                                                 parent_transform->children.end());
+
+    parent = ecs::EntityID{};
     set_outdated();
     return true;
 }
-bool Transformation::set_parent(std::shared_ptr<Transformation> p_parent) {
-    if (this->parent == p_parent || std::find_if(children.begin(), children.end(), [&p_parent](const std::shared_ptr<Transformation> child) { return child == p_parent; }) != children.end()) {
+
+bool Transformation::set_parent(ecs::EntityID parentID) {
+    if (this->parent == parentID || std::find(children.begin(), children.end(), parentID) != children.end()) {
         return false;
     }
-    if (this->parent) {
+    if (this->parent.id != ecs::INVALID_ID) {
         remove_parent();
     }
-    this->parent = p_parent;
-    this->parent->children.push_back(this->shared_from_this());
+    this->parent = parentID;
+    auto parent_transform = (*ecs)[parentID].get<Transformation>();
+    parent_transform->children.push_back(ecs::EntityID{this->component_id.id});
     set_outdated();
     return true;
 }
-bool Transformation::add_child(std::shared_ptr<Transformation> child) {
-    return child->set_parent(this->shared_from_this());
+
+bool Transformation::add_child(ecs::EntityID childID) {
+    //auto& child_transform = ecs.get_entity(childID).get<Transformation>();
+    //return child_transform.set_parent(this->get_entity_id());
+
+    auto child_transform = (*ecs)[childID].get<Transformation>();
+    return child_transform->set_parent(ecs::EntityID{this->component_id.id});
 }
-bool Transformation::remove_child(std::shared_ptr<Transformation> child) {
-    return child->remove_parent();
+
+bool Transformation::remove_child(ecs::EntityID childID) {
+    //auto& child_transform = ecs.get_entity(childID).get<Transformation>();
+    //return child_transform.remove_parent();
+
+    auto child_transform = (*ecs)[childID].get<Transformation>();
+    return child_transform->remove_parent();
 }
-std::vector<std::shared_ptr<Transformation>> Transformation::get_children() {
+
+std::vector<ecs::EntityID> Transformation::get_children() {
     return this->children;
 }

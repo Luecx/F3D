@@ -1,31 +1,31 @@
 #ifndef F3D_TRANSFORMATION_H
 #define F3D_TRANSFORMATION_H
 
-#include "../ecs/include.h"
 #include "mat.h"
-
-#include <algorithm>
-#include <memory>
+#include <ecs.h>
 #include <vector>
 
-class Transformation : public ecs::ComponentInterface, public std::enable_shared_from_this<Transformation> {
+class ECS;
 
+class Transformation : public ecs::ComponentOf<Transformation> {
     protected:
-    Vec3f                        position {0, 0, 0};
-    Vec3f                        rotation {0, 0, 0};
-    Vec3f                        scale {1, 1, 1};
+    Vec3f position {0, 0, 0};
+    Vec3f rotation {0, 0, 0};
+    Vec3f scale    {1, 1, 1};
 
-    Mat4f                        local_transformation {Mat4f::eye()};
-    Mat4f                        global_transformation {Mat4f::eye()};
+    Mat4f local_transformation {Mat4f::eye()};
+    Mat4f global_transformation {Mat4f::eye()};
 
-    std::shared_ptr<Transformation>              parent = nullptr;
-    std::vector<std::shared_ptr<Transformation>> children;
+    ecs::EntityID parent = ecs::EntityID{};
+    std::vector<ecs::EntityID> children;
 
-    bool                         outdated = true;
+    bool outdated = true;
 
     public:
     // construction
-    Transformation(const Vec3f& position = {0, 0, 0}, const Vec3f& rotation = {0, 0, 0}, const Vec3f& scale = {1, 1, 1});
+    Transformation(const Vec3f& position = {0, 0, 0},
+                   const Vec3f& rotation = {0, 0, 0},
+                   const Vec3f& scale    = {1, 1, 1});
 
     virtual ~Transformation();
 
@@ -50,26 +50,33 @@ class Transformation : public ecs::ComponentInterface, public std::enable_shared
 
     // managing parenting relationships
     bool remove_parent();
+    bool set_parent(ecs::EntityID parentID);
+    bool add_child(ecs::EntityID childID);
+    bool remove_child(ecs::EntityID childID);
+    std::vector<ecs::EntityID> get_children();
 
-    bool set_parent(std::shared_ptr<Transformation> p_parent);
 
-    public:
-    bool add_child(std::shared_ptr<Transformation> child);
 
-    bool remove_child(std::shared_ptr<Transformation> child);
+    // OVERRIDE --------------------------------------------------------------
 
-    std::vector<std::shared_ptr<Transformation>> get_children();
-
-    void component_removed() override {
-        if (parent) {
+    // when the component is removed from the entity
+    void component_removed() override{
+        if (parent.id != ecs::INVALID_ID) {
             remove_parent();
         }
         for (auto& child : children) {
-            child->remove_parent();
+            (*ecs)[child].get<Transformation>()->remove_parent();
         }
-    }
-    void entity_activated() override {}
-    void entity_deactivated() override {}
+    };
+
+    // when the entity is activated or deactivated
+    void entity_activated() override{};
+    void entity_deactivated() override{};
+
+    // when another component is added or removed
+    void other_component_added(ecs::Hash hash) override{};
+    void other_component_removed(ecs::Hash hash) override{};
+
 };
 
-#endif    // F3D_TRANSFORMATION_H
+#endif // F3D_TRANSFORMATION_H

@@ -10,9 +10,7 @@ set(CMAKE_CXX_STANDARD 17)
 # scan for all source files in src/
 file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.h" "src/*.c")
 
-add_executable(F3D ${SOURCES}
-        src/ecs/ecs.cpp
-        src/components/maps.h)
+add_executable(F3D ${SOURCES})
 
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDOUBLE_PRECISION")
