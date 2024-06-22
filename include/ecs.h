@@ -664,6 +664,8 @@ struct EntitySubSet {
 #ifndef ECS_VECTOR_COMPACT_H
 #define ECS_VECTOR_COMPACT_H
 
+#include <algorithm>
+#include <iostream>
 #include <vector>
 
 // a normal vector more or less but when removing, we simply shift the last element to the position of the removed one
@@ -843,6 +845,8 @@ struct System {
 #ifndef ECS_VECTOR_RECYCLING_H
 #define ECS_VECTOR_RECYCLING_H
 
+#include <algorithm>
+#include <iostream>
 #include <vector>
 #include <queue>
 
