@@ -12,6 +12,7 @@ file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.h" "src/*.c")
 
 add_executable(F3D ${SOURCES})
 
+# add_definitions(-DDEBUG)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDOUBLE_PRECISION")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -W")

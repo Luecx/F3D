@@ -1,52 +1,31 @@
-//
-// Created by Finn Eggers on 18.06.24.
-//
+#ifndef RESOURCEMANAGER_H
+#define RESOURCEMANAGER_H
 
-#ifndef F3D_RESOURCEMANAGER_H
-#define F3D_RESOURCEMANAGER_H
+#define F3D_PARALLEL_LOADING
 
-#include <ecs.h>
-
-#ifdef F3D_PARALLEL_LOADING
-#include <thread>
-#endif
-
-struct LoadingThread {
-    std::thread thread;
-    bool running = false;
-};
-
-struct ResourceData : ecs::ComponentOf<ResourceData> {
-    private:
-    std::string path;
-    bool loaded = false;
-
-    public:
-
-    ResourceData(const std::string& path) : path(path) {}
-
-    void load_cpu();
-    void load_gpu();
-
-    void unload_cpu();
-    void unload_gpu();
-};
+#include "LoadingThread.h"
+#include <unordered_map>
+#include <vector>
 
 class ResourceManager {
-    ecs::ECS* ecs;
+    std::unordered_map<ecs::Hash, std::vector<std::shared_ptr<ResourceData>>> resources;
+#ifdef F3D_PARALLEL_LOADING
+    LoadingThread loading_thread;
+#endif
 
-    ecs::EntityID register_image(const std::string& path) {
-        ecs::EntityID entity = ecs->spawn(true);
+    public:
+    ResourceManager();
+    ~ResourceManager();
 
-        return entity;
-    }
+    template<typename DATA>
+    std::shared_ptr<DATA> add(const std::string& path);
 
-    ecs::EntityID register_mesh() {
-
-    }
-
-    void load() {
-    }
+#ifdef F3D_PARALLEL_LOADING
+    void queue_load_operation(const std::shared_ptr<ResourceData>& data, State state);
+    void queue_unload_operation(const std::shared_ptr<ResourceData>& data, State state);
+#endif
 };
 
-#endif    // F3D_RESOURCEMANAGER_H
+#include "ResourceManager.tpp"
+
+#endif // RESOURCEMANAGER_H
