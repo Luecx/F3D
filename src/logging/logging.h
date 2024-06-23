@@ -2,7 +2,7 @@
 #define LOGGING_H
 
 #include <memory>
-#include "Logger.h"
+#include "logger.h"
 
 namespace logging {
 extern std::shared_ptr<Logger> logger;

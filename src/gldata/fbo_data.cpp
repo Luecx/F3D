@@ -1,4 +1,4 @@
-#include "FBOData.h"
+#include "fbo_data.h"
 #include "../core/glerror.h"
 
 FBOData::FBOData(TextureType type) : type(type) {

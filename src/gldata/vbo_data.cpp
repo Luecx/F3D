@@ -2,7 +2,7 @@
 // Created by finn on 5/22/24.
 //
 
-#include "VBOData.h"
+#include "vbo_data.h"
 
 #include "../core/glerror.h"
 

@@ -3,7 +3,7 @@
 
 #define F3D_PARALLEL_LOADING
 
-#include "LoadingThread.h"
+#include "loading_thread.h"
 #include <unordered_map>
 #include <vector>
 
@@ -26,6 +26,6 @@ class ResourceManager {
 #endif
 };
 
-#include "ResourceManager.tpp"
+#include "resource_manager.tpp"
 
 #endif // RESOURCEMANAGER_H

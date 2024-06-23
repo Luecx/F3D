@@ -5,8 +5,8 @@
 #ifndef F3D_FBODATA_H
 #define F3D_FBODATA_H
 
-#include "GLData.h"
-#include "TextureData.h"
+#include "gl_data.h"
+#include "texture_data.h"
 #include <vector>
 
 #include <memory>

@@ -5,8 +5,8 @@
 #ifndef ENGINE3D_VAOData_H
 #define ENGINE3D_VAOData_H
 
-#include "GLData.h"
-#include "VBOData.h"
+#include "gl_data.h"
+#include "vbo_data.h"
 
 #include <memory>
 #include <vector>

@@ -1,7 +1,7 @@
 #ifndef RESOURCEMANAGER_TPP
 #define RESOURCEMANAGER_TPP
 
-#include "ResourceManager.h"
+#include "resource_manager.h"
 
 template<typename DATA>
 std::shared_ptr<DATA> ResourceManager::add(const std::string& path) {

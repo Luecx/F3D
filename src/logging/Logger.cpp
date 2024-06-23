@@ -1,4 +1,4 @@
-#include "Logger.h"
+#include "logger.h"
 #include <ctime>
 #include <sstream>
 #include <stdexcept>
@@ -11,9 +11,9 @@ std::shared_ptr<std::ofstream> FileManager::get_file_stream(const std::string& f
     return file_streams_[filename];
 }
 
-Logger::Logger() : use_timestamp_(false), current_channel_(-1), file_manager_(std::make_shared<FileManager>()) {}
+logging::Logger::Logger() : use_timestamp_(false), current_channel_(-1), file_manager_(std::make_shared<FileManager>()) {}
 
-Logger& Logger::channel(int channel_id) {
+logging::Logger& logging::Logger::channel(int channel_id) {
     if (channel_id < 0 || channel_id >= 16) {
         throw std::invalid_argument("Channel ID must be between 0 and 15");
     }
@@ -24,7 +24,7 @@ Logger& Logger::channel(int channel_id) {
     return *this;
 }
 
-Logger& Logger::file_output(const std::string& filename, int levels) {
+logging::Logger& logging::Logger::file_output(const std::string& filename, int levels) {
     if (current_channel_ < 0) {
         throw std::logic_error("No channel selected");
     }
@@ -33,7 +33,7 @@ Logger& Logger::file_output(const std::string& filename, int levels) {
     return *this;
 }
 
-Logger& Logger::cout(int levels) {
+logging::Logger& logging::Logger::cout(int levels) {
     if (current_channel_ < 0) {
         throw std::logic_error("No channel selected");
     }
@@ -41,7 +41,7 @@ Logger& Logger::cout(int levels) {
     return *this;
 }
 
-Logger& Logger::cerr(int levels) {
+logging::Logger& logging::Logger::cerr(int levels) {
     if (current_channel_ < 0) {
         throw std::logic_error("No channel selected");
     }
@@ -49,12 +49,12 @@ Logger& Logger::cerr(int levels) {
     return *this;
 }
 
-Logger& Logger::timestamp() {
+logging::Logger& logging::Logger::timestamp() {
     use_timestamp_ = true;
     return *this;
 }
 
-void Logger::log(int channel_id, int level, const std::string& message) const {
+void logging::Logger::log(int channel_id, int level, const std::string& message) const {
     if (channels_.find(channel_id) != channels_.end()) {
         const auto& channel = channels_.at(channel_id);
         for (const auto& output : channel->outputs) {
@@ -65,7 +65,7 @@ void Logger::log(int channel_id, int level, const std::string& message) const {
     }
 }
 
-std::string Logger::format_message(int level, const std::string& message) const {
+std::string logging::Logger::format_message(int level, const std::string& message) const {
     std::stringstream ss;
     if (use_timestamp_) {
         ss << current_timestamp() << " ";
@@ -74,14 +74,14 @@ std::string Logger::format_message(int level, const std::string& message) const 
     return ss.str();
 }
 
-std::string Logger::current_timestamp() const {
+std::string logging::Logger::current_timestamp() const {
     std::time_t now = std::time(nullptr);
     char buf[100];
     std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
     return buf;
 }
 
-std::string Logger::level_to_string(int level) const {
+std::string logging::Logger::level_to_string(int level) const {
     switch (level) {
         case INFO: return "INFO";
         case WARNING: return "WARNING";

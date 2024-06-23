@@ -3,7 +3,7 @@
 //
 
 #include "../core/glerror.h"
-#include "TextureData.h"
+#include "texture_data.h"
 
 void TextureData::bind() {
     glBindTexture((GLenum) type, data_id);

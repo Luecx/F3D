@@ -5,7 +5,7 @@
 #ifndef ENGINE3D_VBOID_H
 #define ENGINE3D_VBOID_H
 
-#include "GLData.h"
+#include "gl_data.h"
 
 #include <vector>
 #include <memory>

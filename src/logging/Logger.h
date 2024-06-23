@@ -6,7 +6,9 @@
 #include <vector>
 #include <memory>
 #include <mutex>
-#include "LogOutput.h"
+#include "log_output.h"
+
+namespace logging {
 
 enum LogLevel {
     INFO = 1 << 0,
@@ -15,6 +17,7 @@ enum LogLevel {
     DEBUG = 1 << 3,
     ALL = INFO | WARNING | ERROR | DEBUG
 };
+
 
 class FileManager {
     public:
@@ -52,4 +55,5 @@ class Logger {
     std::shared_ptr<FileManager> file_manager_;
 };
 
+}
 #endif // LOGGER_H
