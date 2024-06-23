@@ -25,8 +25,8 @@ class VBOData : public GLData {
     void store_data(int attributeNumber, int dimensions, std::vector<int>& data);
     void store_indices(std::vector<int>& indices);
 
+    using SPtr = std::shared_ptr<VBOData>;
+    using UPtr = std::unique_ptr<VBOData>;
 };
-
-using VBODataPtr = std::shared_ptr<VBOData>;
 
 #endif    // ENGINE3D_VBOID_H

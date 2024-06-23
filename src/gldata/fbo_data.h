@@ -13,7 +13,7 @@
 
 class FBOData : public GLData {
 
-    std::vector<TextureDataPtr> attachments;
+    std::vector<TextureData::SPtr> attachments;
 
     // type of fbo
     TextureType type;
@@ -31,9 +31,9 @@ class FBOData : public GLData {
 
     bool check_status();
 
-};
+    using SPtr = std::shared_ptr<FBOData>;
+    using UPtr = std::unique_ptr<FBOData>;
 
-using FBODataSPtr = std::shared_ptr<FBOData>;
-using FBODataUPtr = std::unique_ptr<FBOData>;
+};
 
 #endif    // F3D_FBODATA_H

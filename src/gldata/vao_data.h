@@ -12,7 +12,7 @@
 #include <vector>
 
 class VAOData : public GLData {
-    std::vector<VBODataPtr> vbos;
+    std::vector<VBOData::SPtr> vbos;
 
     public:
     VAOData();
@@ -22,9 +22,11 @@ class VAOData : public GLData {
     void bind() override;
     void unbind() override;
 
-    void addVBO(const VBODataPtr& vbo);
+    void addVBO(const VBOData::SPtr& vbo);
+
+    using SPtr = std::shared_ptr<VAOData>;
+    using UPtr = std::unique_ptr<VAOData>;
 };
 
-using VAODataPtr = std::shared_ptr<VAOData>;
 
 #endif    // ENGINE3D_VAOData_H

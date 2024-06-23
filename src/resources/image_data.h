@@ -10,6 +10,9 @@
 struct ImageData : public ResourceData {
     using ResourceData::ResourceData;
 
+    std::unique_ptr<unsigned char[]> cpu_data;
+    TextureData::UPtr gpu_data;
+
     bool load_cpu_specific() override;
     bool load_gpu_specific() override;
     bool unload_cpu_specific() override;

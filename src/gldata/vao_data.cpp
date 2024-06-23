@@ -31,6 +31,6 @@ void VAOData::unbind() {
     GL_ERROR_CHECK();
 }
 
-void VAOData::addVBO(const VBODataPtr& vbo) {
+void VAOData::addVBO(const VBOData::SPtr & vbo) {
     vbos.push_back(vbo);
 }

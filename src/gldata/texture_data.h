@@ -27,8 +27,9 @@ class TextureData : public GLData{
     void bind() override;
     void unbind() override;
     void set_data(int width, int height, GLenum format, GLenum type, const void* data[6]);
-};
 
-using TextureDataPtr = std::shared_ptr<TextureData>;
+    using SPtr = std::shared_ptr<TextureData>;
+    using UPtr = std::unique_ptr<TextureData>;
+};
 
 #endif    // ENGINE3D_TEXTUREID_H
