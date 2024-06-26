@@ -6,6 +6,7 @@
 #define F3D_IMAGE_DATA_H
 
 #include "resource_data.h"
+#include "../gldata/texture_data.h"
 
 struct ImageData : public ResourceData {
     using ResourceData::ResourceData;

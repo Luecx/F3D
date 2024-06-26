@@ -1,0 +1,3 @@
+C:/Users/Luecx/CLionProjects/F3D/cmake-build-release-mingw/CMakeFiles/F3D.dir
+C:/Users/Luecx/CLionProjects/F3D/cmake-build-release-mingw/CMakeFiles/edit_cache.dir
+C:/Users/Luecx/CLionProjects/F3D/cmake-build-release-mingw/CMakeFiles/rebuild_cache.dir

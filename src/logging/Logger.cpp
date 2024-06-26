@@ -3,7 +3,7 @@
 #include <sstream>
 #include <stdexcept>
 
-std::shared_ptr<std::ofstream> FileManager::get_file_stream(const std::string& filename) {
+std::shared_ptr<std::ofstream> logging::FileManager::get_file_stream(const std::string& filename) {
     std::lock_guard<std::mutex> lock(mtx_);
     if (file_streams_.find(filename) == file_streams_.end()) {
         file_streams_[filename] = std::make_shared<std::ofstream>(filename, std::ios::app);

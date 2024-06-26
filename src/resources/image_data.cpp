@@ -10,17 +10,17 @@ bool ImageData::load_cpu_specific() {
 }
 
 bool ImageData::load_gpu_specific() {
-    // Image-specific GPU loading logic here
+    gpu_data = std::make_unique<TextureData>();
     return true;
 }
 
 bool ImageData::unload_cpu_specific() {
-    // Image-specific CPU unloading logic here
+    delete cpu_data.release();
     return true;
 }
 
 bool ImageData::unload_gpu_specific() {
-    // Image-specific GPU unloading logic here
+    gpu_data = nullptr;
     return true;
 }
 

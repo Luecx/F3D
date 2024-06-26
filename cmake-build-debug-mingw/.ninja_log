@@ -1,0 +1,27 @@
+# ninja log v5
+39	719	7408442888928998	CMakeFiles/F3D.dir/src/logging/logging.cpp.obj	6a62bb48b0399262
+18	108	7408303674730119	CMakeFiles/F3D.dir/src/gldata/GLData.cpp.obj	538c8ea6036fd448
+8	557	7408303679220132	CMakeFiles/F3D.dir/src/gldata/VBOData.cpp.obj	2660bbb04bd45ae1
+6	1126	7408309053133040	CMakeFiles/F3D.dir/src/resources/MeshData.cpp.obj	42ca8e2e92076359
+14	507	7408303678720111	CMakeFiles/F3D.dir/src/gldata/TextureData.cpp.obj	5fba688a2c59ab9f
+47	1461	7408442896319019	CMakeFiles/F3D.dir/src/math/transformation.cpp.obj	4faaf91bc1827de1
+11	624	7408303679900106	CMakeFiles/F3D.dir/src/gldata/VAOData.cpp.obj	9c309f58369fbec2
+7	904	7408442890779006	CMakeFiles/F3D.dir/src/glad.c.obj	af36f70ec8a0bcc6
+5	657	7408303680220108	CMakeFiles/F3D.dir/src/gldata/FBOData.cpp.obj	6271be914109e215
+9	1398	7408309055883107	CMakeFiles/F3D.dir/src/resources/LoadingThread.cpp.obj	a1ce4345106081bb
+7	1321	7408309170273886	CMakeFiles/F3D.dir/src/resources/ResourceData.cpp.obj	d7d1e49ae5811cd1
+43	1664	7408442898359025	CMakeFiles/F3D.dir/src/main.cpp.obj	e73b4a4bcba7def4
+2	163	7408443418921966	build.ninja	4831fe83c25f0904
+28	608	7408303679740101	CMakeFiles/F3D.dir/src/logging/LogOutput.cpp.obj	3c192fedf04c9f1
+25	1090	7408443305312983	CMakeFiles/F3D.dir/src/logging/Logger.cpp.obj	1e43f66ecf958dfb
+15	1336	7408309055263081	CMakeFiles/F3D.dir/src/resources/ResourceManager.cpp.obj	6a1bc7e700053147
+1496	2435	7408309912052427	F3D.exe	b258c3b7193dfab7
+1	224	7408443418921966	build.ninja	4831fe83c25f0904
+6	106	7408443420881958	CMakeFiles/F3D.dir/src/gldata/gl_data.cpp.obj	27c17700487dd45e
+25	564	7408443425471957	CMakeFiles/F3D.dir/src/gldata/texture_data.cpp.obj	da1e86ee71acc016
+13	568	7408443425521954	CMakeFiles/F3D.dir/src/gldata/vbo_data.cpp.obj	e6e523a83819dfcd
+15	629	7408443426121947	CMakeFiles/F3D.dir/src/gldata/vao_data.cpp.obj	6506890f5a5c65fb
+18	637	7408443426201943	CMakeFiles/F3D.dir/src/logging/log_output.cpp.obj	575c596bd8085ce2
+9	694	7408443426781951	CMakeFiles/F3D.dir/src/gldata/fbo_data.cpp.obj	dab8af6064634d19
+22	1228	7408443432111945	CMakeFiles/F3D.dir/src/logging/logger.cpp.obj	6759c46fb271f31c
+37	1315	7408443432971934	CMakeFiles/F3D.dir/src/resources/mesh_data.cpp.obj	b9446e694b41a38b

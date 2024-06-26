@@ -5,7 +5,7 @@ find_package(glfw3 3.3 REQUIRED)
 find_package(OpenGL REQUIRED)
 
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 17) # C++17
 
 # scan for all source files in src/
 file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.h" "src/*.c")
