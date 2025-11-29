@@ -1,4 +1,0 @@
-C:\msys64\mingw64\bin\cmake.exe -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_MAKE_PROGRAM=C:/Program Files/JetBrains/CLion 2022.3.2/bin/ninja/win/x64/ninja.exe" -G Ninja -S C:\Users\Luecx\CLionProjects\F3D -B C:\Users\Luecx\CLionProjects\F3D\cmake-build-debug-mingw
--- Configuring done
--- Generating done
--- Build files have been written to: C:/Users/Luecx/CLionProjects/F3D/cmake-build-debug-mingw

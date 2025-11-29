@@ -1,9 +1,5 @@
 //
-// Created by finn on 5/22/24.
+// Created by Luecx on 29.11.2025.
 //
 
 #include "gl_data.h"
-
-GLData::operator GLuint() const {
-    return data_id;
-}

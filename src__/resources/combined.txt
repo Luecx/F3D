@@ -1,0 +1,1753 @@
+#include "image_buffer.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
+
+ImageBuffer::ImageBuffer(const std::string& filename) : _data(nullptr), _width(0), _height(0), _channels(0) {
+    // Load the image using stb_image.
+    _data = stbi_load(filename.c_str(), &_width, &_height, &_channels, 0);
+    if (!_data) {
+        throw std::runtime_error("Failed to load image: " + filename);
+    }
+}
+
+ImageBuffer::~ImageBuffer() {
+    if (_data) {
+        stbi_image_free(_data);
+        _data = nullptr;
+    }
+}
+
+ImageBuffer::ImageBuffer(ImageBuffer&& other) noexcept
+    : _data(other._data), _width(other._width), _height(other._height), _channels(other._channels) {
+    // Reset the source object to avoid double-free.
+    other._data = nullptr;
+    other._width = 0;
+    other._height = 0;
+    other._channels = 0;
+}
+
+ImageBuffer& ImageBuffer::operator=(ImageBuffer&& other) noexcept {
+    if (this != &other) {
+        if (_data) {
+            stbi_image_free(_data);
+        }
+        _data = other._data;
+        _width = other._width;
+        _height = other._height;
+        _channels = other._channels;
+
+        // Reset the source object.
+        other._data = nullptr;
+        other._width = 0;
+        other._height = 0;
+        other._channels = 0;
+    }
+    return *this;
+}
+
+unsigned char* ImageBuffer::data() const { return _data; }
+
+int ImageBuffer::width() const { return _width; }
+
+int ImageBuffer::height() const { return _height; }
+
+int ImageBuffer::channels() const { return _channels; }
+#pragma once
+
+#include <string>
+#include <stdexcept>
+#include <memory>
+
+/**
+ * @brief A simple class for loading and managing image data on the CPU.
+ *
+ * This class uses stb_image (included only in the source file) to load image files.
+ * It allocates memory for the image data on the CPU and frees it on destruction.
+ */
+class ImageBuffer {
+  public:
+    using SPtr = std::shared_ptr<ImageBuffer>; ///< Shared pointer type alias.
+    using UPtr = std::unique_ptr<ImageBuffer>; ///< Unique pointer type alias.
+
+    /**
+     * @brief Constructs an ImageBuffer by loading an image file.
+     *
+     * This constructor loads an image from the given filename.
+     * If loading fails, it throws a std::runtime_error.
+     *
+     * @param filename The path to the image file to load.
+     *
+     * @exception std::runtime_error Thrown if the image file cannot be loaded.
+     */
+    explicit ImageBuffer(const std::string& filename);
+    ImageBuffer() = default;
+
+    /**
+     * @brief Destructor that frees the allocated image data.
+     */
+    ~ImageBuffer();
+
+    // Disable copy constructor and assignment operator to avoid double deletion.
+    ImageBuffer(const ImageBuffer&) = delete;
+    ImageBuffer& operator=(const ImageBuffer&) = delete;
+
+    /**
+     * @brief Move constructor that transfers ownership of image data.
+     *
+     * After the move, the other ImageBuffer is left in a safe, destructible state.
+     *
+     * @param other An rvalue reference to another ImageBuffer.
+     */
+    ImageBuffer(ImageBuffer&& other) noexcept;
+
+    /**
+     * @brief Move assignment operator that transfers ownership of image data.
+     *
+     * @param other An rvalue reference to another ImageBuffer.
+     * @return A reference to this ImageBuffer.
+     */
+    ImageBuffer& operator=(ImageBuffer&& other) noexcept;
+
+    /**
+     * @brief Returns a pointer to the loaded image data.
+     *
+     * The data is stored in row-major order with each pixel consisting of _channels components.
+     *
+     * @return Pointer to the image data.
+     */
+    unsigned char* data() const;
+
+    /**
+     * @brief Gets the width of the image.
+     *
+     * @return The image width in pixels.
+     */
+    int width() const;
+
+    /**
+     * @brief Gets the height of the image.
+     *
+     * @return The image height in pixels.
+     */
+    int height() const;
+
+    /**
+     * @brief Gets the number of color channels in the image.
+     *
+     * @return The number of channels per pixel.
+     */
+    int channels() const;
+
+  private:
+    unsigned char* _data; ///< Pointer to the image data allocated on the CPU.
+    int _width;           ///< Image width in pixels.
+    int _height;          ///< Image height in pixels.
+    int _channels;        ///< Number of color channels per pixel.
+};
+//
+// Created by Luecx on 23.06.2024.
+//
+
+#include "image_data.h"
+
+#include "image_buffer.h"
+
+#include <iostream>
+
+ImageData::ImageData(std::string path) : ResourceData(std::move(path)) { set_label("Image"); }
+
+bool ImageData::load_to_ram() {
+    cpu_data = std::make_unique<ImageBuffer>(get_path());
+    if (!cpu_data) {
+        return false;
+    }
+    width = cpu_data->width();
+    height = cpu_data->height();
+    channels = cpu_data->channels();
+    return true;
+}
+
+bool ImageData::load_to_gpu() {
+    if (!cpu_data) {
+        std::cerr << "No CPU data loaded for image: " << get_path() << std::endl;
+        return false;
+    }
+
+    gpu_data = std::make_unique<TextureData>(TextureType::TEX_2D);
+
+    GLenum format = GL_RGB;
+    GLenum internal_format = GL_RGB8;
+    if (channels == 1) {
+        format = GL_RED;
+        internal_format = GL_R8;
+    } else if (channels == 3) {
+        format = GL_RGB;
+        internal_format = GL_RGB8;
+    } else if (channels == 4) {
+        format = GL_RGBA;
+        internal_format = GL_RGBA8;
+    }
+
+    TextureSpecification spec;
+    spec.type = TextureType::TEX_2D;
+    spec.internal_format = internal_format;
+    spec.data_format = format;
+    spec.data_type = GL_UNSIGNED_BYTE;
+    spec.wrap_s = spec.wrap_t = GL_REPEAT;
+    spec.wrap_r = GL_REPEAT;
+
+    const void* data_array[6] = {cpu_data->data(), nullptr, nullptr, nullptr, nullptr, nullptr};
+    gpu_data->set_data(width, height, spec, data_array);
+
+    return true;
+}
+
+void ImageData::unload_from_ram() {
+    cpu_data.reset();
+    width = height = channels = 0;
+}
+
+void ImageData::unload_from_gpu() { gpu_data.reset(); }
+#pragma once
+
+#include "resource_data.h"
+#include "image_buffer.h"
+#include "../gldata/texture_data.h"
+
+// Forward declaration of ImageBuffer class
+class ImageBuffer;
+
+struct ImageData : public ResourceData {
+    explicit ImageData(std::string path);
+
+    // Image properties
+    int width{0}, height{0}, channels{0};
+
+    // CPU image data (managed through ImageBuffer class)
+    ImageBuffer::UPtr cpu_data;
+
+    // GPU image data (OpenGL texture wrapper)
+    TextureData::UPtr gpu_data;
+
+    // CPU and GPU load/unload overrides
+    bool load_to_ram() override;
+    void unload_from_ram() override;
+    bool load_to_gpu() override;
+    void unload_from_gpu() override;
+};
+#include "loading_thread.h"
+
+using namespace logging;
+
+LoadingThread::LoadingThread() {
+    logging::log(1, INFO, "Starting loading thread.");
+    worker = std::thread(&LoadingThread::process_operations, this);
+}
+
+LoadingThread::~LoadingThread() {
+    {
+        std::unique_lock<std::mutex> lock(queue_mutex);
+        stop_thread = true;
+    }
+    queue_cv.notify_all();
+    worker.join();
+    logging::log(1, INFO, "Loading thread stopped.");
+}
+
+void LoadingThread::queue_operation(const Operation& operation) {
+    {
+        std::unique_lock<std::mutex> lock(queue_mutex);
+        operations_queue.push(operation);
+        logging::log(1, DEBUG, "Queued operation for resource: " + operation.data->get_path());
+    }
+    queue_cv.notify_one();
+}
+
+void LoadingThread::process_operations() {
+    while (true) {
+        Operation op;
+
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            queue_cv.wait(lock, [this] { return !operations_queue.empty() || stop_thread; });
+
+            if (stop_thread && operations_queue.empty()) {
+                logging::log(1, INFO, "Stopping processing operations.");
+                break;
+            }
+
+            op = operations_queue.front();
+            operations_queue.pop();
+        }
+
+        bool result = op.data->operator()(op.state, op.type);
+        if (result) {
+            logging::log(1, INFO, "Successfully processed operation for resource: " + op.data->get_path());
+        } else {
+            logging::log(1, WARNING, "Failed to process operation for resource: " + op.data->get_path());
+        }
+    }
+}
+#ifndef LOADINGTHREAD_H
+#define LOADINGTHREAD_H
+
+#include "resource_data.h"
+
+#include <condition_variable>
+#include <mutex>
+#include <queue>
+#include <thread>
+
+#include "../logging/logging.h"
+
+struct Operation {
+    std::shared_ptr<ResourceData> data;
+    resources::ResourceOpType type;
+    resources::ResourceState state;
+};
+
+class LoadingThread {
+  private:
+    std::queue<Operation> operations_queue;
+    std::mutex queue_mutex;
+    std::condition_variable queue_cv;
+    std::thread worker;
+    bool stop_thread = false;
+
+    void process_operations();
+
+  public:
+    LoadingThread();
+    ~LoadingThread();
+
+    void queue_operation(const Operation& operation);
+};
+
+#endif // LOADINGTHREAD_H
+#include "material_data.h"
+
+#include "resource_manager.h"
+
+#include "../logging/logging.h"
+
+#include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+
+using namespace logging;
+
+namespace {
+std::string trim(const std::string& s) {
+    const auto start = s.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) {
+        return "";
+    }
+    const auto end = s.find_last_not_of(" \t\r\n");
+    return s.substr(start, end - start + 1);
+}
+
+bool parse_vec3(std::istringstream& iss, float& x, float& y, float& z) { return static_cast<bool>(iss >> x >> y >> z); }
+
+float convert_ns_to_roughness(float ns) {
+    float normalized = std::clamp(ns / 1000.0f, 0.0f, 1.0f);
+    return std::sqrt(std::max(1.0f - normalized, 0.0f));
+}
+
+} // namespace
+
+MaterialData::MaterialData(const std::string& path, std::string material_name)
+    : ResourceData(path), material_name_(std::move(material_name)) {
+    set_label("Material");
+}
+
+bool MaterialData::load_to_ram() {
+    std::ifstream file(get_path());
+    if (!file.is_open()) {
+        log(1, ERROR, "Failed to open material file: " + get_path());
+        return false;
+    }
+
+    material = std::make_shared<Material>(material_name_);
+    material->set_default_material();
+    auto& props = material->properties();
+
+    auto base_dir = std::filesystem::path(get_path()).parent_path();
+
+    auto resolve_texture = [&](const std::string& relative) -> std::shared_ptr<TextureResource> {
+        if (relative.empty()) {
+            return nullptr;
+        }
+        std::filesystem::path full = base_dir / relative;
+        if (auto* mgr = get_manager()) {
+            return mgr->get_texture(full.string());
+        }
+        return nullptr;
+    };
+
+    bool found = false;
+    std::string line;
+    while (std::getline(file, line)) {
+        line = trim(line);
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+
+        std::istringstream iss(line);
+        std::string keyword;
+        iss >> keyword;
+        if (keyword == "newmtl") {
+            std::string name;
+            std::getline(iss, name);
+            name = trim(name);
+            if (found) {
+                break; // finished parsing target material
+            }
+            if (name == material_name_) {
+                found = true;
+            }
+            continue;
+        }
+
+        if (!found) {
+            continue;
+        }
+
+        if (keyword == "Kd") {
+            float r, g, b;
+            if (parse_vec3(iss, r, g, b)) {
+                props.base_color.set_constant(r, g, b);
+            }
+        } else if (keyword == "Ps" || keyword == "Ks") {
+            float r, g, b;
+            if (parse_vec3(iss, r, g, b)) {
+                props.specular.set_constant((r + g + b) / 3.0f);
+            }
+        } else if (keyword == "Ke") {
+            float r, g, b;
+            if (parse_vec3(iss, r, g, b)) {
+                props.emission_color.set_constant(r, g, b);
+            }
+        } else if (keyword == "Ns") {
+            float ns;
+            if (iss >> ns) {
+                props.roughness.set_constant(convert_ns_to_roughness(ns));
+            }
+        } else if (keyword == "d") {
+            float dissolve;
+            if (iss >> dissolve) {
+                props.transmission.set_constant(1.0f - dissolve);
+            }
+        } else if (keyword == "Tr") {
+            float tr;
+            if (iss >> tr) {
+                props.transmission.set_constant(tr);
+            }
+        } else if (keyword == "map_Kd") {
+            std::string tex;
+            if (iss >> tex) {
+                props.base_color.set_texture(resolve_texture(tex));
+            }
+        } else if (keyword == "map_Ks") {
+            std::string tex;
+            if (iss >> tex) {
+                props.specular.set_texture(resolve_texture(tex));
+            }
+        } else if (keyword == "map_Ke") {
+            std::string tex;
+            if (iss >> tex) {
+                props.emission_color.set_texture(resolve_texture(tex));
+            }
+        } else if (keyword == "map_Bump" || keyword == "bump") {
+            std::string tex;
+            if (iss >> tex) {
+                material->assign_texture_slot("normal_map", resolve_texture(tex));
+            }
+        } else if (keyword == "map_d") {
+            std::string tex;
+            if (iss >> tex) {
+                props.transmission.set_texture(resolve_texture(tex));
+            }
+        }
+    }
+
+    if (!found) {
+        log(1, WARNING, "Material '" + material_name_ + "' not found in " + get_path());
+        material.reset();
+        return false;
+    }
+
+    return true;
+}
+
+void MaterialData::unload_from_ram() {
+    material.reset();
+    gpu_material_index_ = -1;
+}
+
+bool MaterialData::load_to_gpu() {
+    if (!material) {
+        return false;
+    }
+
+    auto require_texture = [](const std::shared_ptr<TextureResource>& tex) {
+        if (tex) {
+            tex->require(resources::ResourceState::Gpu);
+        }
+    };
+
+    auto& props = material->properties();
+
+    require_texture(props.normal_map);
+    require_texture(props.displacement_map);
+    require_texture(props.ambient_occlusion_map);
+
+    auto handle_component = [&](auto& component) {
+        if (component.mode == ComponentMode::TEXTURE && component.texture) {
+            component.texture->require(resources::ResourceState::Gpu);
+        }
+    };
+
+    handle_component(props.base_color);
+    handle_component(props.subsurface_color);
+    handle_component(props.subsurface_radius);
+    handle_component(props.emission_color);
+
+    handle_component(props.metallic);
+    handle_component(props.specular);
+    handle_component(props.specular_tint);
+    handle_component(props.roughness);
+    handle_component(props.anisotropic);
+    handle_component(props.anisotropic_rotation);
+    handle_component(props.subsurface);
+    handle_component(props.sheen);
+    handle_component(props.sheen_tint);
+    handle_component(props.clearcoat);
+    handle_component(props.clearcoat_roughness);
+    handle_component(props.ior);
+    handle_component(props.transmission);
+    handle_component(props.transmission_roughness);
+    handle_component(props.emission_strength);
+
+    int new_index = -1;
+    if (auto* mgr = get_manager()) {
+        if (auto* mat_manager = mgr->material_manager()) {
+            new_index = static_cast<int>(mat_manager->add_material(material));
+        }
+    }
+    gpu_material_index_ = new_index;
+
+    return true;
+}
+
+void MaterialData::unload_from_gpu() {
+    if (!material) {
+        return;
+    }
+
+    auto release_texture = [](const std::shared_ptr<TextureResource>& tex) {
+        if (tex) {
+            tex->release(resources::ResourceState::Gpu);
+        }
+    };
+
+    auto& props = material->properties();
+
+    release_texture(props.normal_map);
+    release_texture(props.displacement_map);
+    release_texture(props.ambient_occlusion_map);
+
+    auto release_component = [&](auto& component) {
+        if (component.mode == ComponentMode::TEXTURE && component.texture) {
+            component.texture->release(resources::ResourceState::Gpu);
+        }
+    };
+
+    release_component(props.base_color);
+    release_component(props.subsurface_color);
+    release_component(props.subsurface_radius);
+    release_component(props.emission_color);
+
+    release_component(props.metallic);
+    release_component(props.specular);
+    release_component(props.specular_tint);
+    release_component(props.roughness);
+    release_component(props.anisotropic);
+    release_component(props.anisotropic_rotation);
+    release_component(props.subsurface);
+    release_component(props.sheen);
+    release_component(props.sheen_tint);
+    release_component(props.clearcoat);
+    release_component(props.clearcoat_roughness);
+    release_component(props.ior);
+    release_component(props.transmission);
+    release_component(props.transmission_roughness);
+    release_component(props.emission_strength);
+    gpu_material_index_ = -1;
+}
+
+bool MaterialData::is_transparent(float threshold) const {
+    if (!material) {
+        return false;
+    }
+    return material->properties().is_transparent(threshold);
+}
+#ifndef MATERIAL_DATA_H
+#define MATERIAL_DATA_H
+
+#include "resource_data.h"
+#include "../material/material.h"
+
+#include <string>
+
+class MaterialData : public ResourceData {
+  public:
+    MaterialData(const std::string& path, std::string material_name);
+
+    bool load_to_ram() override;
+    void unload_from_ram() override;
+    bool load_to_gpu() override;
+    void unload_from_gpu() override;
+
+    Material::SPtr material;
+    Material* get_material() const { return material.get(); }
+    int gpu_material_index() const { return gpu_material_index_; }
+    bool is_transparent(float threshold = 0.001f) const;
+
+    const std::string& material_name() const { return material_name_; }
+
+  private:
+    std::string material_name_;
+    int gpu_material_index_{-1};
+};
+
+#endif // MATERIAL_DATA_H
+#include "mesh_data.h"
+
+#include "resource_manager.h"
+
+#include "../logging/logging.h"
+
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <unordered_map>
+
+#include <glad/glad.h>
+
+using namespace logging;
+
+MeshData::MeshData(std::string path) : ResourceData(std::move(path)) { set_label("Mesh"); }
+
+namespace {
+struct Float3 {
+    float x{0.0f};
+    float y{0.0f};
+    float z{0.0f};
+};
+
+Float3 operator-(const Float3& a, const Float3& b) { return Float3{a.x - b.x, a.y - b.y, a.z - b.z}; }
+
+struct VertexKey {
+    int position{-1};
+    int texcoord{-1};
+    int normal{-1};
+    int material_slot{-1};
+
+    bool operator==(const VertexKey& other) const {
+        return position == other.position && texcoord == other.texcoord && normal == other.normal &&
+               material_slot == other.material_slot;
+    }
+};
+
+struct VertexKeyHash {
+    std::size_t operator()(const VertexKey& key) const noexcept {
+        std::size_t seed = 0;
+        seed ^= std::hash<int>{}(key.position) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        seed ^= std::hash<int>{}(key.texcoord) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        seed ^= std::hash<int>{}(key.normal) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        seed ^= std::hash<int>{}(key.material_slot) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        return seed;
+    }
+};
+
+Float3 cross(const Float3& a, const Float3& b) {
+    return Float3{a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
+}
+
+Float3 normalize(const Float3& v) {
+    float len = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    if (len < 1e-8f) {
+        return Float3{0.0f, 1.0f, 0.0f};
+    }
+    return Float3{v.x / len, v.y / len, v.z / len};
+}
+
+} // namespace
+
+bool MeshData::load_to_ram() {
+    std::ifstream file(get_path());
+    if (!file.is_open()) {
+        log(1, ERROR, "Failed to open OBJ file: " + get_path());
+        return false;
+    }
+
+    geometry_ = MeshGeometry{};
+    material_slots_.clear();
+
+    std::vector<Float3> positions;
+    std::vector<Float3> normals;
+    std::vector<Vec2f> texcoords;
+
+    std::unordered_map<VertexKey, uint32_t, VertexKeyHash> vertex_map;
+
+    std::filesystem::path base_dir = std::filesystem::path(get_path()).parent_path();
+    std::vector<std::filesystem::path> material_libraries;
+
+    std::shared_ptr<MaterialData> active_material;
+    std::unordered_map<MaterialData*, int> material_slot_lookup;
+    int current_material_slot = -1;
+
+    auto slot_for_material = [&](const std::shared_ptr<MaterialData>& mat) -> int {
+        if (!mat) {
+            return -1;
+        }
+        auto* ptr = mat.get();
+        if (auto it = material_slot_lookup.find(ptr); it != material_slot_lookup.end()) {
+            return it->second;
+        }
+        int slot = static_cast<int>(material_slots_.size());
+        material_slot_lookup.emplace(ptr, slot);
+        material_slots_.push_back(mat);
+        register_dependency(resources::ResourceState::Ram, mat, resources::ResourceState::Ram);
+        register_dependency(resources::ResourceState::Gpu, mat, resources::ResourceState::Gpu);
+        return slot;
+    };
+
+    auto resolve_material = [&](const std::string& name) -> std::shared_ptr<MaterialData> {
+        if (name.empty()) {
+            return nullptr;
+        }
+        auto* mgr = get_manager();
+        if (!mgr) {
+            return nullptr;
+        }
+        for (const auto& lib : material_libraries) {
+            auto mat = mgr->get_material(lib.string(), name);
+            if (mat) {
+                return mat;
+            }
+        }
+        log(1, WARNING, "Material '" + name + "' referenced but not defined in OBJ: " + get_path());
+        return nullptr;
+    };
+
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        std::istringstream iss(line);
+        std::string keyword;
+        iss >> keyword;
+        if (keyword == "v") {
+            Float3 p;
+            iss >> p.x >> p.y >> p.z;
+            positions.push_back(p);
+        } else if (keyword == "vn") {
+            Float3 n;
+            iss >> n.x >> n.y >> n.z;
+            normals.push_back(n);
+        } else if (keyword == "vt") {
+            float u, v;
+            iss >> u >> v;
+            texcoords.emplace_back(u, v);
+        } else if (keyword == "mtllib") {
+            std::string name;
+            iss >> name;
+            if (!name.empty()) {
+                material_libraries.push_back(std::filesystem::weakly_canonical(base_dir / name));
+            }
+        } else if (keyword == "usemtl") {
+            std::string mat_name;
+            iss >> mat_name;
+            active_material = resolve_material(mat_name);
+            current_material_slot = slot_for_material(active_material);
+        } else if (keyword == "f") {
+            std::vector<std::string> tokens;
+            std::string token;
+            while (iss >> token) {
+                tokens.push_back(token);
+            }
+            if (tokens.size() < 3) {
+                continue;
+            }
+
+            auto parse_vertex = [&](const std::string& str) -> VertexKey {
+                VertexKey key;
+                std::stringstream ss(str);
+                std::string item;
+                int index = 0;
+                while (std::getline(ss, item, '/')) {
+                    if (item.empty()) {
+                        ++index;
+                        continue;
+                    }
+                    int value = std::stoi(item) - 1;
+                    if (index == 0)
+                        key.position = value;
+                    else if (index == 1)
+                        key.texcoord = value;
+                    else if (index == 2)
+                        key.normal = value;
+                    ++index;
+                }
+                key.material_slot = current_material_slot;
+                return key;
+            };
+
+            auto emit_vertex = [&](const VertexKey& key) {
+                auto it = vertex_map.find(key);
+                if (it != vertex_map.end()) {
+                    geometry_.indices.push_back(it->second);
+                    return;
+                }
+                uint32_t new_index = static_cast<uint32_t>(geometry_.positions.size() / 3);
+                vertex_map[key] = new_index;
+                if (key.position >= 0 && key.position < static_cast<int>(positions.size())) {
+                    const auto& p = positions[key.position];
+                    geometry_.positions.insert(geometry_.positions.end(), {p.x, p.y, p.z});
+                } else {
+                    geometry_.positions.insert(geometry_.positions.end(), {0.0f, 0.0f, 0.0f});
+                }
+                if (key.normal >= 0 && key.normal < static_cast<int>(normals.size())) {
+                    const auto& n = normals[key.normal];
+                    geometry_.normals.insert(geometry_.normals.end(), {n.x, n.y, n.z});
+                } else {
+                    geometry_.normals.insert(geometry_.normals.end(), {0.0f, 0.0f, 0.0f});
+                }
+                if (key.texcoord >= 0 && key.texcoord < static_cast<int>(texcoords.size())) {
+                    const auto& t = texcoords[key.texcoord];
+                    geometry_.texcoords.insert(geometry_.texcoords.end(), {t[0], t[1]});
+                } else {
+                    geometry_.texcoords.insert(geometry_.texcoords.end(), {0.0f, 0.0f});
+                }
+                geometry_.material_slots.push_back(key.material_slot);
+                geometry_.indices.push_back(new_index);
+            };
+
+            VertexKey v0 = parse_vertex(tokens[0]);
+            VertexKey v1 = parse_vertex(tokens[1]);
+            VertexKey v2 = parse_vertex(tokens[2]);
+            emit_vertex(v0);
+            emit_vertex(v1);
+            emit_vertex(v2);
+
+            for (std::size_t i = 3; i < tokens.size(); ++i) {
+                VertexKey vi = parse_vertex(tokens[i]);
+                emit_vertex(v0);
+                emit_vertex(v2);
+                emit_vertex(vi);
+                v2 = vi;
+            }
+        }
+    }
+
+    if (geometry_.positions.empty()) {
+        log(1, WARNING, "OBJ contains no vertices: " + get_path());
+        return false;
+    }
+
+    // generate normals if missing
+    if (geometry_.normals.size() != geometry_.positions.size()) {
+        geometry_.normals.resize(geometry_.positions.size());
+    }
+    std::vector<Float3> accum(vertex_count());
+    for (std::size_t i = 0; i + 2 < geometry_.indices.size(); i += 3) {
+        auto idx0 = geometry_.indices[i];
+        auto idx1 = geometry_.indices[i + 1];
+        auto idx2 = geometry_.indices[i + 2];
+        Float3 p0{geometry_.positions[idx0 * 3 + 0], geometry_.positions[idx0 * 3 + 1],
+                  geometry_.positions[idx0 * 3 + 2]};
+        Float3 p1{geometry_.positions[idx1 * 3 + 0], geometry_.positions[idx1 * 3 + 1],
+                  geometry_.positions[idx1 * 3 + 2]};
+        Float3 p2{geometry_.positions[idx2 * 3 + 0], geometry_.positions[idx2 * 3 + 1],
+                  geometry_.positions[idx2 * 3 + 2]};
+        Float3 normal = normalize(cross(p1 - p0, p2 - p0));
+        accum[idx0].x += normal.x;
+        accum[idx0].y += normal.y;
+        accum[idx0].z += normal.z;
+        accum[idx1].x += normal.x;
+        accum[idx1].y += normal.y;
+        accum[idx1].z += normal.z;
+        accum[idx2].x += normal.x;
+        accum[idx2].y += normal.y;
+        accum[idx2].z += normal.z;
+    }
+    for (std::size_t i = 0; i < vertex_count(); ++i) {
+        Float3 n = normalize(accum[i]);
+        geometry_.normals[i * 3 + 0] = n.x;
+        geometry_.normals[i * 3 + 1] = n.y;
+        geometry_.normals[i * 3 + 2] = n.z;
+    }
+
+    has_transparent_materials_ = false;
+    has_opaque_materials_ = false;
+    for (const auto& slot : material_slots_) {
+        if (!slot) {
+            has_opaque_materials_ = true;
+            continue;
+        }
+        bool transparent = slot->is_transparent();
+        has_transparent_materials_ = has_transparent_materials_ || transparent;
+        has_opaque_materials_ = has_opaque_materials_ || !transparent;
+    }
+
+    log(1, INFO,
+        "Loaded OBJ '" + get_path() + "' with " + std::to_string(vertex_count()) + " vertices and " +
+            std::to_string(material_slots_.size()) + " material assignments");
+    return true;
+}
+
+void MeshData::unload_from_ram() {
+    geometry_.positions.clear();
+    geometry_.normals.clear();
+    geometry_.texcoords.clear();
+    geometry_.indices.clear();
+    geometry_.material_slots.clear();
+    material_slots_.clear();
+    has_transparent_materials_ = false;
+    has_opaque_materials_ = false;
+}
+
+bool MeshData::load_to_gpu() {
+    if (geometry_.positions.empty() || geometry_.indices.empty()) {
+        log(1, WARNING, "Mesh has no geometry; cannot upload: " + get_path());
+        return false;
+    }
+
+    gpu_.vao = std::make_unique<VAOData>();
+    gpu_.vao->bind();
+
+    gpu_.position_vbo = std::make_unique<VBOData>();
+    gpu_.normal_vbo = std::make_unique<VBOData>();
+    gpu_.uv_vbo = std::make_unique<VBOData>();
+    gpu_.index_vbo = std::make_unique<VBOData>();
+
+    glEnableVertexAttribArray(0);
+    gpu_.position_vbo->store_data(0, 3, geometry_.positions);
+
+    glEnableVertexAttribArray(1);
+    gpu_.normal_vbo->store_data(1, 3, geometry_.normals);
+
+    if (!geometry_.texcoords.empty()) {
+        glEnableVertexAttribArray(2);
+        gpu_.uv_vbo->store_data(2, 2, geometry_.texcoords);
+    }
+
+    if (!geometry_.material_slots.empty()) {
+        std::vector<int> slot_to_gpu(material_slots_.size(), -1);
+        for (std::size_t i = 0; i < material_slots_.size(); ++i) {
+            if (material_slots_[i]) {
+                slot_to_gpu[i] = material_slots_[i]->gpu_material_index();
+            }
+        }
+
+        std::vector<int> vertex_material_ids;
+        vertex_material_ids.reserve(geometry_.material_slots.size());
+        for (int slot : geometry_.material_slots) {
+            int gpu_index = (slot >= 0 && static_cast<std::size_t>(slot) < slot_to_gpu.size()) ? slot_to_gpu[slot] : -1;
+            vertex_material_ids.push_back(gpu_index);
+        }
+
+        glEnableVertexAttribArray(3);
+        gpu_.material_vbo = std::make_unique<VBOData>();
+        gpu_.material_vbo->store_data(3, 1, vertex_material_ids);
+    }
+
+    std::vector<uint32_t> indices32(geometry_.indices.begin(), geometry_.indices.end());
+    gpu_.index_vbo->store_indices(indices32);
+
+    gpu_.vao->unbind();
+    log(1, INFO, "Uploaded mesh to GPU: " + get_path());
+    return true;
+}
+
+void MeshData::unload_from_gpu() {
+    gpu_.index_vbo.reset();
+    gpu_.material_vbo.reset();
+    gpu_.uv_vbo.reset();
+    gpu_.normal_vbo.reset();
+    gpu_.position_vbo.reset();
+    gpu_.vao.reset();
+}
+
+void MeshData::draw() const {
+    if (!gpu_.vao) {
+        logging::log(0, logging::WARNING, "MeshData::draw skipped: GPU buffers missing for " + get_path());
+        return;
+    }
+    if (index_count() == 0) {
+        logging::log(0, logging::WARNING, "MeshData::draw skipped: no indices for " + get_path());
+        return;
+    }
+    logging::log(0, logging::DEBUG,
+                 "MeshData::draw issuing GL draw for " + get_path() + " indices=" + std::to_string(index_count()));
+    gpu_.vao->bind();
+    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(index_count()), GL_UNSIGNED_INT, nullptr);
+    gpu_.vao->unbind();
+}
+
+void MeshData::draw_instanced(GLsizei instance_count, GLuint base_instance) const {
+    if (instance_count <= 0) {
+        return;
+    }
+    if (!gpu_.vao) {
+        logging::log(0, logging::WARNING, "MeshData::draw_instanced skipped: GPU buffers missing for " + get_path());
+        return;
+    }
+    if (index_count() == 0) {
+        logging::log(0, logging::WARNING, "MeshData::draw_instanced skipped: no indices for " + get_path());
+        return;
+    }
+    gpu_.vao->bind();
+    glDrawElementsInstancedBaseInstance(GL_TRIANGLES, static_cast<GLsizei>(index_count()), GL_UNSIGNED_INT, nullptr,
+                                        instance_count, base_instance);
+    gpu_.vao->unbind();
+}
+#pragma once
+
+#include "resource_data.h"
+
+#include "../gldata/vao_data.h"
+#include "../gldata/vbo_data.h"
+#include "../math/mat.h"
+#include "material_data.h"
+
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
+struct MeshGeometry {
+    std::vector<float> positions;
+    std::vector<float> normals;
+    std::vector<float> texcoords;
+    std::vector<uint32_t> indices;
+    std::vector<int> material_slots;
+};
+
+struct MeshGpuBuffers {
+    VAOData::UPtr vao;
+    VBOData::UPtr position_vbo;
+    VBOData::UPtr normal_vbo;
+    VBOData::UPtr uv_vbo;
+    VBOData::UPtr material_vbo;
+    VBOData::UPtr index_vbo;
+};
+
+struct MeshData : public ResourceData {
+    explicit MeshData(std::string path);
+
+    bool load_to_ram() override;
+    void unload_from_ram() override;
+    bool load_to_gpu() override;
+    void unload_from_gpu() override;
+
+    const MeshGeometry& geometry() const { return geometry_; }
+    const MeshGpuBuffers& gpu_buffers() const { return gpu_; }
+    std::size_t vertex_count() const { return geometry_.positions.size() / 3; }
+    std::size_t index_count() const { return geometry_.indices.size(); }
+
+    void draw() const;
+    void draw_instanced(GLsizei instance_count, GLuint base_instance = 0) const;
+
+    bool has_transparent_materials() const { return has_transparent_materials_; }
+    bool has_opaque_materials() const { return has_opaque_materials_; }
+
+  private:
+    MeshGeometry geometry_;
+    MeshGpuBuffers gpu_;
+    std::vector<std::shared_ptr<MaterialData>> material_slots_;
+    bool has_transparent_materials_{false};
+    bool has_opaque_materials_{false};
+};
+//
+// Created by Luecx on 06.04.2025.
+//
+
+#include "model_data.h"
+
+bool ModelData::load_to_ram() {
+    // TODO: implement real model loading.
+    return true;
+}
+
+bool ModelData::load_to_gpu() {
+    // TODO: upload meshes to GPU buffers.
+    return true;
+}
+
+void ModelData::unload_from_ram() {
+    // TODO: release CPU side data.
+}
+
+void ModelData::unload_from_gpu() {
+    // TODO: release GPU buffers.
+}
+//
+// Created by Luecx on 06.04.2025.
+//
+
+#ifndef MODEL_DATA_H
+#define MODEL_DATA_H
+
+#include "resource_data.h"
+
+class ModelData : public ResourceData {
+  public:
+    using ResourceData::ResourceData;
+
+  protected:
+    bool load_to_ram() override;
+    void unload_from_ram() override;
+    bool load_to_gpu() override;
+    void unload_from_gpu() override;
+};
+
+#endif // MODEL_DATA_H
+#include "resource_data.h"
+
+#include "resource_manager.h"
+
+#include "../logging/logging.h"
+
+using namespace logging;
+using namespace resources;
+
+ResourceData::ResourceData(std::string path) : path_(std::move(path)) {}
+
+const std::string& ResourceData::get_path() const { return path_; }
+
+void ResourceData::set_label(std::string label) { label_ = std::move(label); }
+
+std::string ResourceData::display_name() const {
+    if (label_.empty()) {
+        return path_;
+    }
+    return label_ + ": " + path_;
+}
+
+ResourceManager* ResourceData::get_manager() const { return manager_; }
+
+resources::ResourceState ResourceData::current_state() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return state_;
+}
+
+std::array<std::size_t, resources::kResourceStateCount> ResourceData::request_counts() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return requests_;
+}
+
+std::vector<ResourceData::DependencyStatus> ResourceData::active_dependencies() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    std::vector<DependencyStatus> snapshot;
+    snapshot.reserve(active_dependencies_.size());
+    for (const auto& dep : active_dependencies_) {
+        if (dep.resource) {
+            snapshot.push_back(DependencyStatus{dep.owning_state, dep.resource->get_path(), dep.required_state});
+        }
+    }
+    return snapshot;
+}
+
+void ResourceData::set_manager(ResourceManager* manager) { manager_ = manager; }
+
+bool ResourceData::supports_state(State state) const { return true; }
+
+bool ResourceData::load_to_gpu() { return true; }
+
+void ResourceData::unload_from_gpu() {}
+
+void ResourceData::register_dependency(State owning_state, const std::shared_ptr<ResourceData>& dependency,
+                                       State required_state) {
+    if (!dependency) {
+        return;
+    }
+    dependency_requirements_[to_index(owning_state)].push_back(DependencyRequest{dependency, required_state});
+}
+
+bool ResourceData::require(State state) {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    auto idx = to_index(state);
+    requests_[idx]++;
+    return promote(state);
+}
+
+void ResourceData::release(State state) {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    auto idx = to_index(state);
+    if (requests_[idx] == 0) {
+        logging::log(1, WARNING, "Release called without matching require for " + display_name());
+        return;
+    }
+    requests_[idx]--;
+    auto desired = highest_requested_state();
+    if (desired < state_) {
+        demote(desired);
+    }
+}
+
+bool ResourceData::operator()(State state, OpType type) {
+    switch (type) {
+    case OpType::Load:
+        return require(state);
+    case OpType::Unload:
+        release(state);
+        return true;
+    }
+    logging::log(1, ERROR, "Unknown operation on resource " + display_name());
+    return false;
+}
+
+void ResourceData::load(State state) {
+#ifdef F3D_PARALLEL_LOADING
+    if (manager_) {
+        manager_->queue_load_operation(shared_from_this(), state);
+        return;
+    }
+#endif
+    require(state);
+}
+
+void ResourceData::unload(State state) {
+#ifdef F3D_PARALLEL_LOADING
+    if (manager_) {
+        manager_->queue_unload_operation(shared_from_this(), state);
+        return;
+    }
+#endif
+    release(state);
+}
+
+bool ResourceData::promote(State target_state) {
+    while (state_ < target_state) {
+        State next = next_state(state_);
+        if (!supports_state(next)) {
+            logging::log(1, ERROR,
+                         "Resource does not support state " + std::string(to_string(next)) + ": " + display_name());
+            return false;
+        }
+
+        if (!acquire_dependencies(next)) {
+            return false;
+        }
+
+        bool success = true;
+        if (next == State::Ram) {
+            success = load_to_ram();
+        } else if (next == State::Gpu) {
+            success = load_to_gpu();
+        }
+
+        if (!success) {
+            logging::log(1, ERROR, "Failed to load " + std::string(to_string(next)) + " data for " + display_name());
+            release_dependencies(next);
+            return false;
+        }
+
+        state_ = next;
+        logging::log(1, INFO, "Resource state advanced to " + std::string(to_string(state_)) + ": " + display_name());
+    }
+    return true;
+}
+
+void ResourceData::demote(State target_state) {
+    while (state_ > target_state) {
+        State current = state_;
+        if (current == State::Gpu) {
+            unload_from_gpu();
+        } else if (current == State::Ram) {
+            unload_from_ram();
+        }
+        release_dependencies(current);
+        state_ = previous_state(current);
+        logging::log(1, INFO, "Resource state lowered to " + std::string(to_string(state_)) + ": " + display_name());
+    }
+}
+
+bool ResourceData::acquire_dependencies(State owning_state) {
+    auto index = to_index(owning_state);
+    for (auto& requirement : dependency_requirements_[index]) {
+        auto dependency = requirement.resource.lock();
+        if (!dependency) {
+            logging::log(1, ERROR, "Dependency expired for resource " + display_name());
+            return false;
+        }
+        if (!dependency->require(requirement.required_state)) {
+            logging::log(1, ERROR, "Failed to promote dependency for resource " + display_name());
+            // Roll back already acquired dependencies for this state.
+            release_dependencies(owning_state);
+            return false;
+        }
+        active_dependencies_.push_back(ActiveDependency{owning_state, dependency, requirement.required_state});
+    }
+    return true;
+}
+
+void ResourceData::release_dependencies(State owning_state) {
+    auto it = active_dependencies_.begin();
+    while (it != active_dependencies_.end()) {
+        if (it->owning_state == owning_state) {
+            it->resource->release(it->required_state);
+            it = active_dependencies_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+ResourceData::State ResourceData::highest_requested_state() const {
+    for (int i = static_cast<int>(State::Gpu); i >= static_cast<int>(State::Drive); --i) {
+        if (requests_[static_cast<std::size_t>(i)] > 0) {
+            return static_cast<State>(i);
+        }
+    }
+    return State::Drive;
+}
+#pragma once
+
+#include "resource_types.h"
+
+#include <ecs.h>
+
+#include <array>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
+
+class ResourceManager;
+
+struct ResourceData : public std::enable_shared_from_this<ResourceData> {
+    using State = resources::ResourceState;
+    using OpType = resources::ResourceOpType;
+
+    struct DependencyRequest {
+        std::weak_ptr<ResourceData> resource;
+        State required_state{State::Drive};
+    };
+
+    struct ActiveDependency {
+        State owning_state{State::Drive};
+        std::shared_ptr<ResourceData> resource;
+        State required_state{State::Drive};
+    };
+
+    struct DependencyStatus {
+        State owning_state{State::Drive};
+        std::string path;
+        State required_state{State::Drive};
+    };
+
+  public:
+    explicit ResourceData(std::string path);
+    virtual ~ResourceData() = default;
+
+    const std::string& get_path() const;
+    State current_state() const;
+    std::array<std::size_t, resources::kResourceStateCount> request_counts() const;
+    std::vector<DependencyStatus> active_dependencies() const;
+
+    void set_manager(ResourceManager* manager);
+    ResourceManager* get_manager() const;
+
+    bool supports_state(State state) const;
+
+    // Reference counting style API used by the manager and dependencies.
+    bool require(State state);
+    void release(State state);
+
+    // Legacy style API used by the loading thread interface.
+    bool operator()(State state, OpType type);
+    void load(State state);
+    void unload(State state);
+
+  protected:
+    virtual bool load_to_ram() = 0;
+    virtual void unload_from_ram() = 0;
+
+    virtual bool load_to_gpu();
+    virtual void unload_from_gpu();
+
+    // Derived classes use this to define dependency requirements for each state transition.
+    void register_dependency(State owning_state, const std::shared_ptr<ResourceData>& dependency, State required_state);
+
+    void set_label(std::string label);
+    std::string display_name() const;
+
+  private:
+    bool promote(State target_state);
+    void demote(State target_state);
+
+    bool acquire_dependencies(State owning_state);
+    void release_dependencies(State owning_state);
+
+    State highest_requested_state() const;
+
+    std::string path_;
+    ResourceManager* manager_{nullptr};
+    std::string label_;
+
+    mutable std::mutex state_mutex_;
+    State state_{State::Drive};
+    std::array<std::size_t, resources::kResourceStateCount> requests_{0, 0, 0};
+
+    std::array<std::vector<DependencyRequest>, resources::kResourceStateCount> dependency_requirements_{};
+    std::vector<ActiveDependency> active_dependencies_;
+};
+#include "resource_manager.h"
+
+#include "../logging/logging.h"
+
+#include <filesystem>
+#include <iomanip>
+#include <ostream>
+#include <type_traits>
+
+#include <glad/glad.h>
+
+using namespace logging;
+
+namespace {
+std::string canonical_string(const std::filesystem::path& path) {
+    return std::filesystem::weakly_canonical(path).string();
+}
+} // namespace
+
+ResourceManager::ResourceManager() { log(1, INFO, "ResourceManager created"); }
+
+ResourceManager::~ResourceManager() { log(1, INFO, "ResourceManager destroyed"); }
+
+ResourceManager::Path ResourceManager::canonical_path(const std::string& path) const {
+    std::filesystem::path p(path);
+    if (p.is_relative()) {
+        p = std::filesystem::current_path() / p;
+    }
+    return std::filesystem::weakly_canonical(p);
+}
+
+std::string ResourceManager::material_key(const Path& mtl_path, const std::string& material_name) const {
+    return canonical_string(mtl_path) + "#" + material_name;
+}
+
+std::shared_ptr<ImageData> ResourceManager::get_image(const std::string& path) {
+    auto abs = canonical_path(path);
+    if (auto it = images_.find(abs); it != images_.end()) {
+        return it->second;
+    }
+    auto image = std::make_shared<ImageData>(abs.string());
+    image->set_manager(this);
+    images_.emplace(abs, image);
+    return image;
+}
+
+std::shared_ptr<TextureResource> ResourceManager::get_texture(const std::string& path) {
+    auto abs = canonical_path(path);
+    if (auto it = textures_.find(abs); it != textures_.end()) {
+        return it->second;
+    }
+
+    TextureSpecification spec{};
+    spec.type = TextureType::TEX_2D;
+    spec.internal_format = GL_RGBA8;
+    spec.data_format = GL_RGBA;
+    spec.data_type = GL_UNSIGNED_BYTE;
+    spec.wrap_s = GL_REPEAT;
+    spec.wrap_t = GL_REPEAT;
+    spec.wrap_r = GL_REPEAT;
+    spec.min_filter = GL_LINEAR_MIPMAP_LINEAR;
+    spec.mag_filter = GL_LINEAR;
+    spec.generate_mipmaps = true;
+
+    auto image = get_image(abs.string());
+    auto texture = std::make_shared<TextureResource>(abs.string(), image, spec);
+    texture->set_manager(this);
+    textures_.emplace(abs, texture);
+    return texture;
+}
+
+std::shared_ptr<MaterialData> ResourceManager::get_material(const std::string& mtl_path,
+                                                            const std::string& material_name) {
+    auto abs = canonical_path(mtl_path);
+    auto key = material_key(abs, material_name);
+    if (auto it = materials_.find(key); it != materials_.end()) {
+        return it->second;
+    }
+    auto material = std::make_shared<MaterialData>(abs.string(), material_name);
+    material->set_manager(this);
+    materials_.emplace(key, material);
+    return material;
+}
+
+std::shared_ptr<MeshData> ResourceManager::get_mesh(const std::string& path) {
+    auto abs = canonical_path(path);
+    if (auto it = meshes_.find(abs); it != meshes_.end()) {
+        return it->second;
+    }
+    auto mesh = std::make_shared<MeshData>(abs.string());
+    mesh->set_manager(this);
+    meshes_.emplace(abs, mesh);
+    return mesh;
+}
+
+MaterialManager* ResourceManager::material_manager() {
+    if (!material_manager_) {
+        material_manager_ = std::make_unique<MaterialManager>();
+    }
+    return material_manager_.get();
+}
+
+const MaterialManager* ResourceManager::material_manager() const { return material_manager_.get(); }
+
+namespace {
+template<typename Key> std::string to_string_key(const Key& key) {
+    if constexpr (std::is_same_v<Key, std::filesystem::path>) {
+        return key.string();
+    } else {
+        return key;
+    }
+}
+
+void print_requests(std::ostream& os, const std::array<std::size_t, resources::kResourceStateCount>& counts) {
+    os << "requests=";
+    os << "{";
+    for (std::size_t i = 0; i < counts.size(); ++i) {
+        auto state = static_cast<resources::ResourceState>(i);
+        os << resources::to_string(state) << ": " << counts[i];
+        if (i + 1 < counts.size()) {
+            os << ", ";
+        }
+    }
+    os << "}";
+}
+
+template<typename Map> void print_section(std::ostream& os, const Map& map, const std::string& label) {
+    os << label << " (" << map.size() << ")\n";
+    if (map.empty()) {
+        os << "  <none>\n";
+        return;
+    }
+    std::size_t index = 0;
+    for (const auto& entry : map) {
+        const auto& key = entry.first;
+        const auto& handle = entry.second;
+        os << "  [" << index++ << "] " << to_string_key(key) << "\n";
+        if (!handle) {
+            os << "     <null handle>\n";
+            continue;
+        }
+        os << "     state=" << resources::to_string(handle->current_state()) << ", use_count=" << handle.use_count()
+           << ", ";
+        print_requests(os, handle->request_counts());
+        os << "\n";
+
+        auto deps = handle->active_dependencies();
+        if (!deps.empty()) {
+            os << "     dependencies (" << deps.size() << ")\n";
+            for (const auto& dep : deps) {
+                os << "        owning=" << resources::to_string(dep.owning_state) << " -> " << dep.path << " @"
+                   << resources::to_string(dep.required_state) << "\n";
+            }
+        }
+    }
+}
+} // namespace
+
+std::ostream& operator<<(std::ostream& os, const ResourceManager& manager) {
+    os << "ResourceManager State\n";
+    print_section(os, manager.images_, "Images");
+    print_section(os, manager.textures_, "Textures");
+    print_section(os, manager.materials_, "Materials");
+    print_section(os, manager.meshes_, "Meshes");
+    return os;
+}
+#pragma once
+
+#include "image_data.h"
+#include "loading_thread.h"
+#include "material_data.h"
+#include "mesh_data.h"
+#include "texture_resource.h"
+#include "../material/material_manager.h"
+
+#include <filesystem>
+#include <iosfwd>
+#include <memory>
+#include <string>
+#include <unordered_map>
+
+class ResourceManager {
+  public:
+    ResourceManager();
+    ~ResourceManager();
+
+    std::shared_ptr<ImageData> get_image(const std::string& path);
+    std::shared_ptr<TextureResource> get_texture(const std::string& path);
+    std::shared_ptr<MaterialData> get_material(const std::string& mtl_path, const std::string& material_name);
+    std::shared_ptr<MeshData> get_mesh(const std::string& path);
+
+    MaterialManager* material_manager();
+    const MaterialManager* material_manager() const;
+
+#ifdef F3D_PARALLEL_LOADING
+    LoadingThread loading_thread;
+#endif
+
+  private:
+    using Path = std::filesystem::path;
+
+    Path canonical_path(const std::string& path) const;
+    std::string material_key(const Path& mtl_path, const std::string& material_name) const;
+
+    std::unordered_map<Path, std::shared_ptr<ImageData>> images_;
+    std::unordered_map<Path, std::shared_ptr<TextureResource>> textures_;
+    std::unordered_map<std::string, std::shared_ptr<MaterialData>> materials_;
+    std::unordered_map<Path, std::shared_ptr<MeshData>> meshes_;
+
+    std::unique_ptr<MaterialManager> material_manager_;
+
+    friend std::ostream& operator<<(std::ostream& os, const ResourceManager& manager);
+};
+#pragma once
+// Legacy header preserved for compatibility. ResourceManager templates are now
+// fully defined inside resource_manager.h so this file intentionally remains
+// empty to avoid build errors for projects that still include it.
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <string_view>
+
+namespace resources {
+
+//! Ordered storage states a resource can occupy.
+enum class ResourceState : std::uint8_t { Drive = 0, Ram = 1, Gpu = 2 };
+
+inline constexpr std::size_t kResourceStateCount = 3;
+
+inline constexpr std::size_t to_index(ResourceState state) { return static_cast<std::size_t>(state); }
+
+inline constexpr ResourceState next_state(ResourceState state) {
+    switch (state) {
+    case ResourceState::Drive:
+        return ResourceState::Ram;
+    case ResourceState::Ram:
+        return ResourceState::Gpu;
+    case ResourceState::Gpu:
+        return ResourceState::Gpu;
+    }
+    return ResourceState::Drive;
+}
+
+inline constexpr ResourceState previous_state(ResourceState state) {
+    switch (state) {
+    case ResourceState::Drive:
+        return ResourceState::Drive;
+    case ResourceState::Ram:
+        return ResourceState::Drive;
+    case ResourceState::Gpu:
+        return ResourceState::Ram;
+    }
+    return ResourceState::Drive;
+}
+
+inline constexpr std::string_view to_string(ResourceState state) {
+    switch (state) {
+    case ResourceState::Drive:
+        return "DRIVE";
+    case ResourceState::Ram:
+        return "RAM";
+    case ResourceState::Gpu:
+        return "GPU";
+    }
+    return "UNKNOWN";
+}
+
+enum class ResourceOpType : std::uint8_t { Load, Unload };
+
+} // namespace resources
+#include "texture_resource.h"
+
+#include <iostream>
+
+TextureResource::TextureResource(const std::string& key, std::shared_ptr<ImageData> image,
+                                 TextureSpecification specification)
+    : ResourceData(key), image_(std::move(image)), spec_(specification) {
+    set_label("Texture");
+    if (image_) {
+        register_dependency(resources::ResourceState::Ram, image_, resources::ResourceState::Ram);
+        register_dependency(resources::ResourceState::Gpu, image_, resources::ResourceState::Ram);
+    }
+}
+
+bool TextureResource::load_to_ram() { return static_cast<bool>(image_); }
+
+void TextureResource::unload_from_ram() {}
+
+bool TextureResource::load_to_gpu() {
+    if (!image_ || !image_->cpu_data) {
+        std::cerr << "TextureResource missing CPU data for " << get_path() << std::endl;
+        return false;
+    }
+
+    gpu_texture_ = std::make_unique<TextureData>(spec_.type);
+
+    TextureSpecification upload_spec = spec_;
+    if (image_->channels == 1) {
+        upload_spec.data_format = GL_RED;
+        upload_spec.internal_format = GL_R8;
+    } else if (image_->channels == 3) {
+        upload_spec.data_format = GL_RGB;
+        upload_spec.internal_format = GL_RGB8;
+    } else if (image_->channels == 4) {
+        upload_spec.data_format = GL_RGBA;
+        upload_spec.internal_format = GL_RGBA8;
+    }
+
+    const void* planes[6] = {image_->cpu_data->data(), nullptr, nullptr, nullptr, nullptr, nullptr};
+    gpu_texture_->set_data(image_->width, image_->height, upload_spec, planes);
+    return true;
+}
+
+void TextureResource::unload_from_gpu() { gpu_texture_.reset(); }
+#pragma once
+
+#include "resource_data.h"
+
+#include "../gldata/texture_data.h"
+#include "image_data.h"
+
+class TextureResource : public ResourceData {
+  public:
+    TextureResource(const std::string& key, std::shared_ptr<ImageData> image, TextureSpecification specification);
+
+    TextureData* texture() const { return gpu_texture_.get(); }
+    const TextureSpecification& specification() const { return spec_; }
+
+  protected:
+    bool load_to_ram() override;
+    void unload_from_ram() override;
+    bool load_to_gpu() override;
+    void unload_from_gpu() override;
+
+  private:
+    std::shared_ptr<ImageData> image_;
+    TextureSpecification spec_;
+    TextureData::UPtr gpu_texture_;
+};
