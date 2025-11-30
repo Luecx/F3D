@@ -1,0 +1,9 @@
+newmtl mat_metal
+Kd 1.0 1.0 1.0
+map_Kd ../textures/metal_albedo.png
+map_Bump ../textures/metal_normal.png
+
+newmtl mat_wood
+Kd 1.0 1.0 1.0
+map_Kd ../textures/wood_albedo.png
+map_Bump ../textures/wood_normal.png

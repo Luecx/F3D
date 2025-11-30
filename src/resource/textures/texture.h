@@ -27,8 +27,8 @@ class TextureManager;
  *  - or both true/false.
  *
  * State transitions are performed asynchronously via a job queue owned
- * by @ref TextureManager. Calls to @ref request_state() and
- * @ref release_state() do not block; they simply enqueue work.
+ * by @ref TextureManager. Calls to @ref request() and
+ * @ref release() do not block; they simply enqueue work.
  */
 class Texture : public std::enable_shared_from_this<Texture> {
   public:
@@ -55,25 +55,25 @@ class Texture : public std::enable_shared_from_this<Texture> {
      *        satisfies the given state.
      *
      * Examples:
-     *  - request_state(DRIVE): no-op, DRIVE is always satisfied.
-     *  - request_state(RAM):   will enqueue a CPU load job if RAM is missing.
-     *  - request_state(GPU):   will enqueue both RAM and GPU jobs if needed.
+     *  - request(DRIVE): no-op, DRIVE is always satisfied.
+     *  - request(RAM):   will enqueue a CPU load job if RAM is missing.
+     *  - request(GPU):   will enqueue both RAM and GPU jobs if needed.
      *
      * This function is thread-safe and non-blocking.
      */
-    void request_state(resources::ResourceState state);
+    void request(resources::ResourceState state);
 
     /**
      * @brief Asynchronously requests that this texture *eventually*
      *        drops the given state.
      *
      * Examples:
-     *  - release_state(RAM):   will enqueue a job that frees CPU pixels.
-     *  - release_state(GPU):   will enqueue a job that destroys the GL texture.
+     *  - release(RAM):   will enqueue a job that frees CPU pixels.
+     *  - release(GPU):   will enqueue a job that destroys the GL texture.
      *
      * This function is thread-safe and non-blocking.
      */
-    void release_state(resources::ResourceState state);
+    void release(resources::ResourceState state);
 
     /**
      * @brief Returns a pointer to the GPU texture wrapper, or nullptr if
@@ -88,6 +88,11 @@ class Texture : public std::enable_shared_from_this<Texture> {
      * @brief Const overload of @ref gpu_data().
      */
     [[nodiscard]] const TextureGPUData* gpu_data() const noexcept { return gpu_data_.get(); }
+
+    [[nodiscard]] int ram_refcount() const noexcept { return ram_refcount_.load(std::memory_order_relaxed); }
+    [[nodiscard]] int gpu_refcount() const noexcept { return gpu_refcount_.load(std::memory_order_relaxed); }
+    [[nodiscard]] bool has_ram() const noexcept { return has_ram_.load(std::memory_order_relaxed); }
+    [[nodiscard]] bool has_gpu() const noexcept { return has_gpu_.load(std::memory_order_relaxed); }
 
     /**
      * @brief Returns a pointer to the CPU pixel data, or nullptr if RAM
@@ -138,6 +143,10 @@ class Texture : public std::enable_shared_from_this<Texture> {
     // Atomic flags describing current availability.
     std::atomic<bool> has_ram_{false};
     std::atomic<bool> has_gpu_{false};
+
+    // Reference counters (how many clients requested RAM/GPU).
+    std::atomic<int> ram_refcount_{0};
+    std::atomic<int> gpu_refcount_{0};
 
     // Pending flags to avoid double-queueing jobs.
     std::atomic<bool> ram_load_pending_{false};

@@ -59,7 +59,7 @@ class TextureManager {
      * is returned. Otherwise, a new Texture is created and stored.
      *
      * Calling this function does *not* automatically load or upload
-     * any data; you must call request_state(RAM / GPU) on the texture
+     * any data; you must call request(RAM / GPU) on the texture
      * to schedule work.
      */
     std::shared_ptr<Texture> get(const std::string& path);
@@ -68,8 +68,8 @@ class TextureManager {
      * @brief Enqueues a RAM-related job (LoadRam / UnloadRam) for the
      *        background loading thread.
      *
-     * This is typically called by Texture::request_state() /
-     * Texture::release_state() and should not be used directly.
+     * This is typically called by Texture::request() /
+     * Texture::release() and should not be used directly.
      */
     void enqueue_ram_job(const std::shared_ptr<Texture>& tex, TextureJobType type);
 
@@ -92,20 +92,16 @@ class TextureManager {
      */
     void process_gpu_jobs();
 
+    /**
+     * @brief Dump state of all textures managed.
+     */
+    void dump_state(int indent = 0) const;
+
   private:
     // Worker thread loop for RAM jobs.
-    void ram_worker_loop();
-
     // Maps canonical path -> Texture resource.
     std::unordered_map<std::string, std::shared_ptr<Texture>> textures_;
-    std::mutex textures_mutex_;
-
-    // RAM job queue and worker.
-    std::queue<TextureJob> ram_jobs_;
-    std::mutex ram_mutex_;
-    std::condition_variable ram_cv_;
-    std::thread ram_worker_;
-    bool ram_stop_ = false;
+    mutable std::mutex textures_mutex_;
 
     // GPU job queue (processed on main thread).
     std::queue<TextureJob> gpu_jobs_;

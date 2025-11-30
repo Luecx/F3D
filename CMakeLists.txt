@@ -8,7 +8,11 @@ find_package(OpenGL REQUIRED)
 set(CMAKE_CXX_STANDARD 17) # C++17
 
 # scan for all source files in src/
-file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.h" "src/*.c")
+file(GLOB_RECURSE SOURCES
+    src/*.cpp
+    src/*.c
+    src/*.h)
+
 
 add_executable(F3D ${SOURCES})
 

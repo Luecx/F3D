@@ -2,9 +2,15 @@
 
 #include <memory>
 #include <string>
+#include <atomic>
 
 #include "mesh_cpu_data.h"
 #include "../resource_state.h"
+#include "../resource_logging.h"
+#include "../../logging/logging.h"
+
+class TextureManager;
+class MaterialManager;
 
 /**
  * @brief CPU-only mesh resource representing geometry on disk and in RAM.
@@ -28,14 +34,12 @@ class Mesh {
      */
     explicit Mesh(std::string path);
 
-    /// Returns the file path associated with this mesh.
-    const std::string& path() const { return path_; }
-
     /// Mutable access to CPU data (may be nullptr if not in RAM).
     std::shared_ptr<MeshCPUData> cpu_data() { return cpu_data_; }
 
     /// Const access to CPU data (may be nullptr if not in RAM).
     std::shared_ptr<const MeshCPUData> cpu_data() const { return cpu_data_; }
+    [[nodiscard]] const std::string& path() const { return path_; }
 
     // ------------------------------------------------------------------
     // Resource state API (Drive/Ram only – GPU is handled by MeshGroup).
@@ -48,7 +52,7 @@ class Mesh {
      *  - Drive: no-op (Drive existence is implicit via @ref path_).
      *  - Ram:   ensure CPU data is loaded from Drive.
      */
-    void request_state(resources::ResourceState state);
+    void request(resources::ResourceState state);
 
     /**
      * @brief Release a previously requested state.
@@ -60,7 +64,7 @@ class Mesh {
      * Higher-level systems are responsible for coordinating reference
      * counting (e.g. multiple MeshGroup instances sharing a Mesh).
      */
-    void release_state(resources::ResourceState state);
+    void release(resources::ResourceState state);
 
     /**
      * @brief Query whether the mesh is currently in the given state.
@@ -70,6 +74,8 @@ class Mesh {
      *  - Ram:   true iff CPU data is present.
      */
     bool is_in_state(resources::ResourceState state) const;
+    int  ram_refcount() const { return ram_refcount_.load(std::memory_order_relaxed); }
+    bool has_ram() const { return has_ram_; }
 
   private:
     /**
@@ -83,11 +89,9 @@ class Mesh {
      */
     bool load_from_drive();
 
-    /// Drops CPU data and releases associated memory.
-    void free_ram();
-
   private:
     std::string path_;
     std::shared_ptr<MeshCPUData> cpu_data_;
+    std::atomic<int> ram_refcount_{0};
     bool has_ram_{false};
 };

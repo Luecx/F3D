@@ -4,20 +4,47 @@
 #include <vector>
 
 #include "../textures/texture.h"
+#include "../../logging/logging.h"
+#include "../resource_logging.h"
+
+namespace {
+void collect_textures(const MaterialProperties& props,
+                      std::vector<std::shared_ptr<Texture>>& out) {
+    auto collect_color = [&](const ColorComponent& comp) {
+        if (comp.mode == ComponentMode::TEXTURE && comp.texture) out.push_back(comp.texture);
+    };
+    auto collect_float = [&](const FloatComponent& comp) {
+        if (comp.mode == ComponentMode::TEXTURE && comp.texture) out.push_back(comp.texture);
+    };
+
+    collect_color(props.base_color);
+    collect_color(props.emission_color);
+    collect_color(props.sheen_color);
+
+    collect_float(props.roughness);
+    collect_float(props.metallic);
+    collect_float(props.specular);
+    collect_float(props.specular_tint);
+    collect_float(props.transmission);
+    collect_float(props.transmission_roughness);
+    collect_float(props.clearcoat);
+    collect_float(props.clearcoat_roughness);
+    collect_float(props.subsurface);
+    collect_float(props.sheen);
+    collect_float(props.sheen_tint);
+    collect_float(props.anisotropic);
+    collect_float(props.ior);
+    collect_float(props.anisotropic_rotation);
+
+    if (props.normal_map) out.push_back(props.normal_map);
+    if (props.tangent_map) out.push_back(props.tangent_map);
+}
+} // namespace
 
 using resources::ResourceState;
 
 MaterialManager::MaterialManager()
-    : _allocated_count(1024) { // initial capacity
-    _ssbo_buffer = std::make_shared<SSBOData>();
-
-    std::vector<GPU_Material> initial(_allocated_count);
-    _ssbo_buffer->update_data(_allocated_count * sizeof(GPU_Material), initial.data());
-
-    // Example binding point; must match mat.glsl:
-    // layout(std430, binding = 3) buffer MaterialBuffer { GPU_Material materials[]; };
-    _ssbo_buffer->bind(3);
-}
+    : _allocated_count(0) {} // SSBO allocated lazily in update_gpu_buffer()
 
 MaterialManager::~MaterialManager() = default;
 
@@ -151,7 +178,7 @@ void MaterialManager::update_gpu_buffer() {
     // 1) Request GPU state for all materials (which forwards to all textures).
     for (auto& mat : _materials) {
         if (mat) {
-            mat->request_state(ResourceState::Gpu);
+            mat->request(ResourceState::Gpu);
         }
     }
 
@@ -172,10 +199,43 @@ void MaterialManager::update_gpu_buffer() {
 
     _ssbo_buffer->update_data(_allocated_count * sizeof(GPU_Material), gpu_materials.data());
 
-    // 4) Bind to the same binding point used by your shaders.
+    // 4) Bind to the same binding point used by your shaders, but only if SSBOs are supported.
+#ifdef GL_SHADER_STORAGE_BUFFER
     _ssbo_buffer->bind(3);
+#endif
 }
 
 std::shared_ptr<SSBOData> MaterialManager::get_ssbo() const {
     return _ssbo_buffer;
+}
+
+void MaterialManager::dump_state(int indent) const {
+    const std::string pad(indent, ' ');
+    logging::log(reslog::MATERIAL, logging::INFO, pad + "MaterialManager state:");
+    for (std::size_t i = 0; i < _materials.size(); ++i) {
+        auto mat = _materials[i];
+        if (!mat) continue;
+        const auto name = mat->name().empty() ? std::string("<unnamed>") : mat->name();
+        const bool inRam = mat->is_in_state(resources::ResourceState::Ram);
+        const bool inGpu = mat->is_in_state(resources::ResourceState::Gpu);
+        logging::log(reslog::MATERIAL, logging::INFO,
+                     pad + "  [" + std::to_string(i) + "] " + name +
+                         " RAM=" + (inRam ? "yes" : "no") +
+                         " GPU=" + (inGpu ? "yes" : "no"));
+
+        std::vector<std::shared_ptr<Texture>> textures;
+        // reuse helper
+        {
+            collect_textures(mat->properties(), textures);
+        }
+        for (const auto& tex : textures) {
+            if (!tex) continue;
+            logging::log(reslog::MATERIAL, logging::INFO,
+                         pad + "    tex " + tex->path() +
+                             " RAM=" + (tex->has_ram() ? "yes" : "no") +
+                             " GPU=" + (tex->has_gpu() ? "yes" : "no") +
+                             " rc_ram=" + std::to_string(tex->ram_refcount()) +
+                             " rc_gpu=" + std::to_string(tex->gpu_refcount()));
+        }
+    }
 }

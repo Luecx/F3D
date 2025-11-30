@@ -9,7 +9,7 @@
 #include "material.h"
 
 #include "../resource_types.h"
-#include "../gldata/ssbo_data.h"
+#include "../../gldata/ssbo_data.h"
 
 class Texture;
 
@@ -82,6 +82,11 @@ class MaterialManager {
      * };
      */
     [[nodiscard]] std::shared_ptr<SSBOData> get_ssbo() const;
+
+    /**
+     * @brief Dump state of all materials and their texture dependencies.
+     */
+    void dump_state(int indent = 0) const;
 
   private:
     // Conversion helpers:

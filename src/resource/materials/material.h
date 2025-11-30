@@ -16,7 +16,7 @@
  * Importantly, a Material does not directly manage any GPU buffers itself.
  * The @ref MaterialManager is responsible for converting a Material into the
  * GPU_Material struct and placing it in an SSBO. However, you can still call
- * request_state() on a Material to request that all of its textures be loaded
+ * request() on a Material to request that all of its textures be loaded
  * to RAM or GPU.
  */
 class Material {
@@ -61,12 +61,12 @@ class Material {
      * This does not load anything itself; instead it forwards the request to
      * all textures referenced by @ref MaterialProperties. For example:
      *
-     *  - request_state(ResourceState::Ram) will request RAM for all textures.
-     *  - request_state(ResourceState::Gpu) will request GPU for all textures.
+     *  - request(ResourceState::Ram) will request RAM for all textures.
+     *  - request(ResourceState::Gpu) will request GPU for all textures.
      *
      * @param state Target resource state (Drive, Ram, or Gpu).
      */
-    void request_state(resources::ResourceState state);
+    void request(resources::ResourceState state);
 
     /**
      * @brief Release a previously requested resource state for this material.
@@ -75,7 +75,7 @@ class Material {
      *
      * @param state Target resource state (Ram or Gpu).
      */
-    void release_state(resources::ResourceState state);
+    void release(resources::ResourceState state);
 
     /**
      * @brief Query whether this material is effectively in @p state.

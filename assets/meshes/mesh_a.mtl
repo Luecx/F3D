@@ -1,0 +1,9 @@
+newmtl mat_brick
+Kd 1.0 1.0 1.0
+map_Kd ../textures/brick_albedo.png
+map_Bump ../textures/brick_normal.png
+
+newmtl mat_metal
+Kd 1.0 1.0 1.0
+map_Kd ../textures/metal_albedo.png
+map_Bump ../textures/metal_normal.png

@@ -2,7 +2,8 @@
 
 #include <memory>
 #include <string>
-#include <iostream>
+#include "../../logging/logging.h"
+#include "../resource_logging.h"
 
 class Texture;  // forward declaration
 
@@ -62,11 +63,11 @@ struct ColorComponent {
      * @brief Print a human-readable description, mainly for debugging.
      */
     void print(const std::string& label) const {
-        std::cout << "  " << label << " = ColorComponent("
-                  << "mode=" << (mode == ComponentMode::CONSTANT ? "CONSTANT" : "TEXTURE")
-                  << ", value=(" << r << ", " << g << ", " << b << ")"
-                  << ", has_texture=" << (texture ? "yes" : "no")
-                  << ")\n";
+        logging::log(reslog::MATERIAL, logging::DEBUG,
+                     "  " + label + " = ColorComponent(mode=" +
+                         std::string(mode == ComponentMode::CONSTANT ? "CONSTANT" : "TEXTURE") +
+                         ", value=(" + std::to_string(r) + ", " + std::to_string(g) + ", " + std::to_string(b) + ")" +
+                         ", has_texture=" + (texture ? std::string("yes") : std::string("no")) + ")");
     }
 };
 
@@ -103,11 +104,11 @@ struct FloatComponent {
      * @brief Print a human-readable description, mainly for debugging.
      */
     void print(const std::string& label) const {
-        std::cout << "  " << label << " = FloatComponent("
-                  << "mode=" << (mode == ComponentMode::CONSTANT ? "CONSTANT" : "TEXTURE")
-                  << ", value=" << value
-                  << ", has_texture=" << (texture ? "yes" : "no")
-                  << ")\n";
+        logging::log(reslog::MATERIAL, logging::DEBUG,
+                     "  " + label + " = FloatComponent(mode=" +
+                         std::string(mode == ComponentMode::CONSTANT ? "CONSTANT" : "TEXTURE") +
+                         ", value=" + std::to_string(value) +
+                         ", has_texture=" + (texture ? std::string("yes") : std::string("no")) + ")");
     }
 };
 
@@ -116,6 +117,6 @@ struct FloatComponent {
  */
 inline void print_texture_slot(const std::string& label,
                                const std::shared_ptr<Texture>& tex) {
-    std::cout << "  " << label << " = TextureSlot("
-              << "has_texture=" << (tex ? "yes" : "no") << ")\n";
+    logging::log(reslog::MATERIAL, logging::DEBUG,
+                 "  " + label + " = TextureSlot(has_texture=" + (tex ? std::string("yes") : std::string("no")) + ")");
 }

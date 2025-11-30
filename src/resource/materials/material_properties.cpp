@@ -1,6 +1,8 @@
 #include "material_properties.h"
 
-#include <iostream>
+#include <sstream>
+#include "../../logging/logging.h"
+#include "../resource_logging.h"
 
 void MaterialProperties::set_defaults() {
     // --- Colors ---
@@ -31,7 +33,9 @@ void MaterialProperties::set_defaults() {
 }
 
 void MaterialProperties::print_overview() const {
-    std::cout << "MaterialProperties overview:\n";
+    std::ostringstream ss;
+    ss << "MaterialProperties overview:\n";
+    logging::log(reslog::MATERIAL, logging::INFO, ss.str());
 
     base_color.print("base_color");
     emission_color.print("emission_color");

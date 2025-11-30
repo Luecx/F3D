@@ -62,6 +62,16 @@ class TextureGPUData {
      */
     [[nodiscard]] const TextureData* texture() const noexcept { return texture_.get(); }
 
+    /**
+     * @brief Returns bindless handle (or 0 if not available).
+     */
+    [[nodiscard]] GLuint64 get_handle() const {
+        if (texture_) {
+            return texture_->get_handle();
+        }
+        return 0;
+    }
+
   private:
     TextureData::UPtr texture_;
 };

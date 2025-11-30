@@ -3,6 +3,8 @@
 #include <vector>
 
 #include "../textures/texture.h"
+#include "../resource_logging.h"
+#include "../../logging/logging.h"
 
 using resources::ResourceState;
 
@@ -66,7 +68,9 @@ Material::Material(std::string name)
     properties_.set_defaults();
 }
 
-void Material::request_state(ResourceState state) {
+void Material::request(ResourceState state) {
+    logging::log(reslog::MATERIAL, logging::INFO,
+                 "Requesting material '" + name_ + "' to be in " + std::string(resources::to_string(state)));
     if (state == ResourceState::Drive) {
         // Nothing to do; Drive is our implicit baseline.
         return;
@@ -77,12 +81,14 @@ void Material::request_state(ResourceState state) {
 
     for (auto& tex : textures) {
         if (tex) {
-            tex->request_state(state);
+            tex->request(state);
         }
     }
 }
 
-void Material::release_state(ResourceState state) {
+void Material::release(ResourceState state) {
+    logging::log(reslog::MATERIAL, logging::INFO,
+                 "Releasing material '" + name_ + "' from " + std::string(resources::to_string(state)));
     if (state == ResourceState::Drive) {
         // Nothing to do for Drive.
         return;
@@ -93,7 +99,7 @@ void Material::release_state(ResourceState state) {
 
     for (auto& tex : textures) {
         if (tex) {
-            tex->release_state(state);
+            tex->release(state);
         }
     }
 }

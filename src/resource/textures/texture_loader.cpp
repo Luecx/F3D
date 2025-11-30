@@ -1,8 +1,9 @@
 #include "texture_loader.h"
 
-#include <iostream>
-
+#define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
+#include "../../logging/logging.h"
+#include "../resource_logging.h"
 
 TextureCPUData TextureLoader::load_from_file(const std::string& path) {
     TextureCPUData result;
@@ -20,7 +21,8 @@ TextureCPUData TextureLoader::load_from_file(const std::string& path) {
     unsigned char* data = stbi_load(path.c_str(), &width, &height, &channels_in_file, desired_channels);
 
     if (!data) {
-        std::cerr << "TextureLoader::load_from_file: failed to load image '" << path << "'\n";
+        logging::log(reslog::TEXTURE, logging::ERROR,
+                     "TextureLoader::load_from_file: failed to load image '" + path + "'");
         return result;
     }
 
