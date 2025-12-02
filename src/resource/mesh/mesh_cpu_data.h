@@ -1,38 +1,36 @@
 #pragma once
 
-#include <vector>
 #include <cstdint>
+#include <vector>
 
 #include "submesh.h"
 
 /**
- * @brief Pure CPU-side mesh data.
+ * @brief Pure CPU-side mesh data: attributes + indices + submeshes.
  *
- * This structure contains raw attribute arrays and the index buffer.
- * It is format-agnostic (you can fill it from OBJ, GLTF, or any custom loader).
- *
- * No GPU handles live here. A MeshGroup later aggregates the data of many
- * MeshCPUData instances into a single VAO/VBO/EBO per chunk.
+ * This struct is:
+ *  - Format-agnostic (can be filled from OBJ, GLTF, custom loaders, etc.).
+ *  - Free of GPU/OpenGL concepts.
  */
 struct MeshCPUData {
     // ---------------------------------------------------------------------
     // Vertex attributes
     // ---------------------------------------------------------------------
 
-    /// Position buffer: 3 floats per vertex (x, y, z).
+    /// Positions: 3 floats per vertex (x, y, z).
     std::vector<float> positions;
 
-    /// Normal buffer: optional, 3 floats per vertex (nx, ny, nz).
+    /// Normals: optional, 3 floats per vertex (nx, ny, nz).
     std::vector<float> normals;
 
-    /// Texture coordinate buffer: optional, 2 floats per vertex (u, v).
+    /// Texture coordinates: optional, 2 floats per vertex (u, v).
     std::vector<float> texcoords;
 
     // ---------------------------------------------------------------------
     // Index buffer
     // ---------------------------------------------------------------------
 
-    /// Triangle index buffer, referencing vertices by index.
+    /// Triangle indices, referencing vertices by index.
     std::vector<std::uint32_t> indices;
 
     // ---------------------------------------------------------------------
@@ -40,7 +38,7 @@ struct MeshCPUData {
     // ---------------------------------------------------------------------
 
     /**
-     * @brief Logical submeshes which partition the index buffer.
+     * @brief Logical submeshes that partition the index buffer.
      *
      * Each Submesh defines:
      *  - index_offset / index_count: a range in @ref indices
@@ -52,14 +50,10 @@ struct MeshCPUData {
     // Convenience queries
     // ---------------------------------------------------------------------
 
-    /**
-     * @brief Returns the number of vertices.
-     *
-     * Assumes positions are stored as tightly packed triples of floats.
-     */
+    /// Number of vertices (assuming positions are packed triples).
     std::size_t vertex_count() const { return positions.size() / 3; }
 
-    /// Returns the number of indices.
+    /// Number of indices.
     std::size_t index_count() const { return indices.size(); }
 
     /**
@@ -67,8 +61,8 @@ struct MeshCPUData {
      *
      * Requirements:
      *  - positions.size() % 3 == 0
-     *  - normals.size()   == vertex_count * 3 (or empty)
-     *  - texcoords.size() == vertex_count * 2 (or empty)
+     *  - normals.size()   == vertex_count() * 3 (or empty)
+     *  - texcoords.size() == vertex_count() * 2 (or empty)
      *  - indices not empty
      *  - each submesh's index range fits within indices.size()
      *

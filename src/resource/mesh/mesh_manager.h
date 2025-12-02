@@ -8,41 +8,21 @@
 #include "mesh.h"
 #include "../resource_state.h"
 
-/**
- * @brief Manages deduplicated mesh resources by path.
- *
- * Provides path-based lookup, reference-counted request/release,
- * and state dumping for debugging.
- */
 class MeshManager {
-  public:
-    MeshManager() = default;
-    ~MeshManager() = default;
+    public:
+    MeshManager(TextureManager* tex_mgr = nullptr,
+                MaterialManager* mat_mgr = nullptr);
 
-    MeshManager(const MeshManager&) = delete;
-    MeshManager& operator=(const MeshManager&) = delete;
-
-    /**
-     * @brief Get or create a mesh for a given path.
-     */
     std::shared_ptr<Mesh> get(const std::string& path);
 
-    /**
-     * @brief Request a state for the mesh at @p path.
-     */
-    void request(const std::string& path, resources::ResourceState state);
+    void require(const std::string& path, ResourceState state);
+    void release(const std::string& path, ResourceState state);
 
-    /**
-     * @brief Release a state for the mesh at @p path.
-     */
-    void release(const std::string& path, resources::ResourceState state);
-
-    /**
-     * @brief Dump the state of all meshes with indentation.
-     */
     void dump_state(int indent = 0) const;
 
-  private:
+    private:
     std::unordered_map<std::string, std::shared_ptr<Mesh>> meshes_;
     mutable std::mutex mtx_;
+    TextureManager*  tex_mgr_;
+    MaterialManager* mat_mgr_;
 };

@@ -1,82 +1,55 @@
 #include "texture_manager.h"
 
-#include <utility>
-#include "../resource_logging.h"
 #include "../../logging/logging.h"
-
-TextureManager::TextureManager() = default;
-TextureManager::~TextureManager() = default;
+#include "../resource_logging.h"
 
 std::shared_ptr<Texture> TextureManager::get(const std::string& path) {
-    std::lock_guard<std::mutex> lock(textures_mutex_);
+    std::lock_guard<std::mutex> lock(mtx_);
+
     auto it = textures_.find(path);
     if (it != textures_.end()) {
         return it->second;
     }
-    // Texture constructor is private; construct via new and shared_ptr.
-    auto tex = std::shared_ptr<Texture>(new Texture(path, this));
+
+    auto tex = std::make_shared<Texture>(path);
     textures_[path] = tex;
     return tex;
 }
 
-void TextureManager::enqueue_ram_job(const std::shared_ptr<Texture>& tex, TextureJobType type) {
-    if (!tex) return;
-    switch (type) {
-    case TextureJobType::LoadRam:
-        tex->perform_load_ram();
-        break;
-    case TextureJobType::UnloadRam:
-        tex->perform_unload_ram();
-        break;
-    default:
-        break;
+void TextureManager::require(const std::string& path, ResourceState state) {
+    auto tex = get(path);
+    if (tex) {
+        tex->require(state);
     }
 }
 
-void TextureManager::enqueue_gpu_job(const std::shared_ptr<Texture>& tex, TextureJobType type) {
-    std::lock_guard<std::mutex> lock(gpu_mutex_);
-    gpu_jobs_.push(TextureJob{tex, type});
-}
-
-void TextureManager::process_gpu_jobs() {
-    std::queue<TextureJob> local;
+void TextureManager::release(const std::string& path, ResourceState state) {
+    std::shared_ptr<Texture> tex;
     {
-        std::lock_guard<std::mutex> lock(gpu_mutex_);
-        std::swap(local, gpu_jobs_);
+        std::lock_guard<std::mutex> lock(mtx_);
+        auto it = textures_.find(path);
+        if (it != textures_.end()) {
+            tex = it->second;
+        }
     }
 
-    while (!local.empty()) {
-        TextureJob job = std::move(local.front());
-        local.pop();
-
-        if (auto tex = job.texture.lock()) {
-            switch (job.type) {
-            case TextureJobType::LoadGpu:
-                tex->perform_load_gpu();
-                break;
-            case TextureJobType::UnloadGpu:
-                tex->perform_unload_gpu();
-                break;
-            case TextureJobType::LoadRam:
-            case TextureJobType::UnloadRam:
-                // These should not be scheduled to the GPU queue.
-                break;
-            }
-        }
+    if (tex) {
+        tex->release(state);
     }
 }
 
 void TextureManager::dump_state(int indent) const {
-    std::lock_guard<std::mutex> lock(textures_mutex_);
-    const std::string pad(indent, ' ');
-    logging::log(reslog::TEXTURE, logging::INFO, pad + "TextureManager state:");
+    std::lock_guard<std::mutex> lock(mtx_);
+    std::string pad(indent, ' ');
+
+    logging::log(reslog::TEXTURE, logging::INFO, pad + "Textures:");
     for (const auto& [path, tex] : textures_) {
-        if (!tex) continue;
-        logging::log(reslog::TEXTURE, logging::INFO,
-                     pad + "  " + path +
-                         " RAM=" + (tex->has_ram() ? "yes" : "no") +
-                         " GPU=" + (tex->has_gpu() ? "yes" : "no") +
-                         " rc_ram=" + std::to_string(tex->ram_refcount()) +
-                         " rc_gpu=" + std::to_string(tex->gpu_refcount()));
+        logging::log(
+            reslog::TEXTURE,
+            logging::INFO,
+            pad + "  " + path +
+                " cpu_users=" + std::to_string(tex->cpu_users()) +
+                " gpu_users=" + std::to_string(tex->gpu_users())
+        );
     }
 }

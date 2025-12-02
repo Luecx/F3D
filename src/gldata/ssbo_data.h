@@ -25,6 +25,8 @@
  */
 class SSBOData : public GLData {
   public:
+    static void set_supported(bool supported);
+
     /**
      * @brief Construct an empty SSBO wrapper.
      *
@@ -90,5 +92,8 @@ class SSBOData : public GLData {
      * @brief Unbind the GL_SHADER_STORAGE_BUFFER target.
      */
     void unbind() override;
+
+  private:
+    static bool ssbo_supported_;
 };
 

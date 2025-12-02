@@ -1,156 +1,139 @@
 #pragma once
 
-#include <atomic>
 #include <memory>
 #include <string>
 
-#include "../resource_types.h"          // resources::ResourceState
+#include "../resource_base.h"
+#include "../resource_state.h"
+#include "../resource_logging.h"
+#include "../../logging/logging.h"
+
 #include "texture_cpu_data.h"
 #include "texture_gpu_data.h"
-
-class TextureManager;
+#include "texture_loader.h"
 
 /**
- * @brief High-level texture resource with async DRIVE/RAM/GPU states.
+ * @brief Unified texture resource with CPU/GPU data managed via ResourceBase.
  *
- * A Texture instance represents a *logical* texture identified by a
- * filesystem path. It can hold:
- *
- *  - DRIVE: only the path is known, no data loaded.
- *  - RAM:   CPU pixel data is loaded (@ref TextureCPUData).
- *  - GPU:   GPU texture object is allocated (@ref TextureGPUData).
- *
- * RAM and GPU are *independent* flags, not a single enum state. You can:
- *
- *  - keep RAM=true, GPU=false (CPU-only),
- *  - keep RAM=false, GPU=true (GPU-only),
- *  - or both true/false.
- *
- * State transitions are performed asynchronously via a job queue owned
- * by @ref TextureManager. Calls to @ref request() and
- * @ref release() do not block; they simply enqueue work.
+ * Semantics:
+ *  - require(Cpu):   ensure CPU pixels loaded (synchronous for now).
+ *  - require(Gpu):   ensure GPU texture uploaded; may call require(Cpu) inside
+ *                    impl_load(Gpu) if CPU is needed for upload.
+ *  - release(Cpu):   when cpu_users==0, drop CPU pixels (policy).
+ *  - release(Gpu):   when gpu_users==0, destroy GPU texture object.
  */
-class Texture : public std::enable_shared_from_this<Texture> {
-  public:
+class Texture : public ResourceBase, public std::enable_shared_from_this<Texture> {
+    public:
     using Ptr = std::shared_ptr<Texture>;
 
-    /**
-     * @brief Returns the canonical path identifying this texture.
-     */
-    [[nodiscard]] const std::string& path() const noexcept { return path_; }
+    explicit Texture(std::string path)
+        : path_(std::move(path)) {}
 
-    /**
-     * @brief Returns true if this texture currently satisfies the
-     *        given state.
-     *
-     * Semantics:
-     *  - DRIVE: true iff the texture object has a non-empty path.
-     *  - RAM:   true iff CPU pixel data is currently loaded.
-     *  - GPU:   true iff a GPU texture object is currently alive.
-     */
-    [[nodiscard]] bool is_in_state(resources::ResourceState state) const noexcept;
+    const std::string& path() const noexcept { return path_; }
 
-    /**
-     * @brief Asynchronously requests that this texture *eventually*
-     *        satisfies the given state.
-     *
-     * Examples:
-     *  - request(DRIVE): no-op, DRIVE is always satisfied.
-     *  - request(RAM):   will enqueue a CPU load job if RAM is missing.
-     *  - request(GPU):   will enqueue both RAM and GPU jobs if needed.
-     *
-     * This function is thread-safe and non-blocking.
-     */
-    void request(resources::ResourceState state);
+    TextureCPUData*       cpu_data()       noexcept { return cpu_data_.get(); }
+    const TextureCPUData* cpu_data() const noexcept { return cpu_data_.get(); }
 
-    /**
-     * @brief Asynchronously requests that this texture *eventually*
-     *        drops the given state.
-     *
-     * Examples:
-     *  - release(RAM):   will enqueue a job that frees CPU pixels.
-     *  - release(GPU):   will enqueue a job that destroys the GL texture.
-     *
-     * This function is thread-safe and non-blocking.
-     */
-    void release(resources::ResourceState state);
+    TextureGPUData*       gpu_data()       noexcept { return gpu_data_.get(); }
+    const TextureGPUData* gpu_data() const noexcept { return gpu_data_.get(); }
 
-    /**
-     * @brief Returns a pointer to the GPU texture wrapper, or nullptr if
-     *        GPU is not available.
-     *
-     * This does not change any state; it only exposes the current pointer.
-     * The caller must check @ref is_in_state(GPU) before using it.
-     */
-    [[nodiscard]] TextureGPUData* gpu_data() noexcept { return gpu_data_.get(); }
+    protected:
+    void impl_load(ResourceState state) override {
+        switch (state) {
+            case ResourceState::Cpu:
+                load_cpu();
+                break;
+            case ResourceState::Gpu:
+                load_gpu();
+                break;
+            case ResourceState::Drive:
+            default:
+                // Drive has no managed load/unload in this design.
+                break;
+        }
+    }
 
-    /**
-     * @brief Const overload of @ref gpu_data().
-     */
-    [[nodiscard]] const TextureGPUData* gpu_data() const noexcept { return gpu_data_.get(); }
+    void impl_unload(ResourceState state) override {
+        switch (state) {
+            case ResourceState::Cpu:
+                unload_cpu();
+                break;
+            case ResourceState::Gpu:
+                unload_gpu();
+                break;
+            case ResourceState::Drive:
+            default:
+                // no-op
+                break;
+        }
+    }
 
-    [[nodiscard]] int ram_refcount() const noexcept { return ram_refcount_.load(std::memory_order_relaxed); }
-    [[nodiscard]] int gpu_refcount() const noexcept { return gpu_refcount_.load(std::memory_order_relaxed); }
-    [[nodiscard]] bool has_ram() const noexcept { return has_ram_.load(std::memory_order_relaxed); }
-    [[nodiscard]] bool has_gpu() const noexcept { return has_gpu_.load(std::memory_order_relaxed); }
+    private:
+    void load_cpu() {
+        if (cpu_data_ && cpu_data_->valid()) {
+            return;
+        }
 
-    /**
-     * @brief Returns a pointer to the CPU pixel data, or nullptr if RAM
-     *        is not available.
-     *
-     * The caller must check @ref is_in_state(RAM) before dereferencing it.
-     */
-    [[nodiscard]] TextureCPUData* cpu_data() noexcept { return cpu_data_.get(); }
+        cpu_data_ = std::make_unique<TextureCPUData>(TextureLoader::load_from_file(path_));
 
-    /**
-     * @brief Const overload of @ref cpu_data().
-     */
-    [[nodiscard]] const TextureCPUData* cpu_data() const noexcept { return cpu_data_.get(); }
+        if (!cpu_data_->valid()) {
+            logging::log(reslog::TEXTURE, logging::ERROR,
+                         "Failed to load texture '" + path_ + "' to CPU");
+        } else {
+            logging::log(reslog::TEXTURE, logging::INFO,
+                         "Loaded texture to CPU '" + path_ + "'");
+        }
+    }
 
-  private:
-    friend class TextureManager;
+    void unload_cpu() {
+        if (!cpu_data_) {
+            return;
+        }
+        cpu_data_->reset();
+        cpu_data_.reset();
+        logging::log(reslog::TEXTURE, logging::INFO,
+                     "Released CPU data for '" + path_ + "'");
+    }
 
-    /**
-     * @brief Constructs a Texture with a given path and owning manager.
-     *
-     * This is private by design; only TextureManager should create
-     * Texture instances so that deduplication by path works reliably.
-     */
-    Texture(std::string path, TextureManager* manager);
+    void load_gpu() {
+        if (!gpu_data_) {
+            gpu_data_ = std::make_unique<TextureGPUData>();
+        }
 
-    // --- helper functions used by TextureManager's worker(s) ---
+        // Ensure CPU data exists. We could also just fail if cpu_users()==0,
+        // but for now we load lazily here.
+        if (!cpu_data_ || !cpu_data_->valid()) {
+            load_cpu();
+        }
 
-    /// Called on the loading thread: load CPU pixels (RAM state).
-    void perform_load_ram();
+        if (cpu_data_ && cpu_data_->valid()) {
+            gpu_data_->upload_from_cpu(*cpu_data_);
+            logging::log(reslog::TEXTURE, logging::INFO,
+                         "Uploaded texture to GPU '" + path_ + "'");
 
-    /// Called on the loading thread: free CPU pixels (RAM state).
-    void perform_unload_ram();
+            // Optional policy: if no CPU users, drop CPU data after upload.
+            if (cpu_users() == 0) {
+                unload_cpu();
+                logging::log(reslog::TEXTURE, logging::DEBUG,
+                             "Dropped CPU data after GPU upload for '" + path_ + "'");
+            }
+        } else {
+            logging::log(reslog::TEXTURE, logging::ERROR,
+                         "Texture '" + path_ + "' has no valid CPU data for GPU upload");
+        }
+    }
 
-    /// Called on the main/render thread: upload pixels to GPU.
-    void perform_load_gpu();
+    void unload_gpu() {
+        if (!gpu_data_) {
+            return;
+        }
+        gpu_data_->release();
+        gpu_data_.reset();
+        logging::log(reslog::TEXTURE, logging::INFO,
+                     "Released GPU data for '" + path_ + "'");
+    }
 
-    /// Called on the main/render thread: release GPU texture.
-    void perform_unload_gpu();
-
-  private:
     std::string path_;
-    TextureManager* manager_ = nullptr;
-
-    // CPU / GPU data (protected via atomic flags + manager's job ordering).
-    std::shared_ptr<TextureCPUData> cpu_data_;
-    std::shared_ptr<TextureGPUData> gpu_data_;
-
-    // Atomic flags describing current availability.
-    std::atomic<bool> has_ram_{false};
-    std::atomic<bool> has_gpu_{false};
-
-    // Reference counters (how many clients requested RAM/GPU).
-    std::atomic<int> ram_refcount_{0};
-    std::atomic<int> gpu_refcount_{0};
-
-    // Pending flags to avoid double-queueing jobs.
-    std::atomic<bool> ram_load_pending_{false};
-    std::atomic<bool> ram_unload_pending_{false};
-    std::atomic<bool> gpu_load_pending_{false};
-    std::atomic<bool> gpu_unload_pending_{false};
+    std::unique_ptr<TextureCPUData> cpu_data_;
+    std::unique_ptr<TextureGPUData> gpu_data_;
 };

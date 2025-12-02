@@ -3,95 +3,152 @@
 #include <memory>
 #include <string>
 
+#include "../resource_base.h"
+#include "../resource_state.h"
+#include "../resource_logging.h"
+#include "../../logging/logging.h"
+
+#include "../textures/texture.h"
 #include "material_properties.h"
-#include "../resource_types.h"
 
 /**
- * @brief High-level material object used throughout the engine.
+ * @brief Material resource with physically-based properties and texture slots.
  *
- * A Material owns a @ref MaterialProperties instance (constants + texture
- * references) and provides convenience helpers for managing the *states* of
- * the textures it references.
- *
- * Importantly, a Material does not directly manage any GPU buffers itself.
- * The @ref MaterialManager is responsible for converting a Material into the
- * GPU_Material struct and placing it in an SSBO. However, you can still call
- * request() on a Material to request that all of its textures be loaded
- * to RAM or GPU.
+ * CPU state: MaterialProperties (always present, cheap).
+ * GPU state: "logical" GPU state is:
+ *   - All referenced textures are resident on the GPU.
+ *   - A corresponding GPU_Material entry in a global SSBO (updated by MaterialManager).
  */
-class Material {
-  public:
-    using SPtr = std::shared_ptr<Material>;
+class Material : public ResourceBase, public std::enable_shared_from_this<Material> {
+    public:
+    using Ptr = std::shared_ptr<Material>;
 
-    /**
-     * @brief Construct a material with an optional human-readable name.
-     */
-    explicit Material(std::string name = {});
+    explicit Material(std::string name = {})
+        : name_(std::move(name)) {
+        properties_.set_defaults();
+    }
 
-    /**
-     * @brief Get the name of the material.
-     */
-    [[nodiscard]] const std::string& name() const { return name_; }
+    const std::string& name() const { return name_; }
 
-    /**
-     * @brief Set the name of the material.
-     */
-    void set_name(std::string name) { name_ = std::move(name); }
+    MaterialProperties&       properties()       { return properties_; }
+    const MaterialProperties& properties() const { return properties_; }
 
-    /**
-     * @brief Access the material properties (mutable).
-     */
-    [[nodiscard]] MaterialProperties& properties() { return properties_; }
+    /// Returns whether this material needs its SSBO entry updated.
+    bool gpu_dirty() const noexcept { return gpu_dirty_; }
+    void clear_gpu_dirty() noexcept { gpu_dirty_ = false; }
 
-    /**
-     * @brief Access the material properties (read-only).
-     */
-    [[nodiscard]] const MaterialProperties& properties() const { return properties_; }
+    protected:
+    void impl_load(ResourceState state) override {
+        switch (state) {
+            case ResourceState::Cpu:
+                // Nothing special; properties_ are already alive.
+                logging::log(reslog::MATERIAL, logging::DEBUG,
+                             "CPU acquire material '" + name_ + "'");
+                break;
 
-    /**
-     * @brief Initialize this material with default principled values.
-     *
-     * This simply forwards to MaterialProperties::set_defaults().
-     */
-    void set_default_properties() { properties_.set_defaults(); }
+            case ResourceState::Gpu:
+                logging::log(reslog::MATERIAL, logging::INFO,
+                             "GPU acquire material '" + name_ + "'");
+                acquire_textures_gpu();
+                gpu_dirty_ = true; // SSBO entry should be (re)built/updated
+                break;
 
-    /**
-     * @brief Request a resource state for this material.
-     *
-     * This does not load anything itself; instead it forwards the request to
-     * all textures referenced by @ref MaterialProperties. For example:
-     *
-     *  - request(ResourceState::Ram) will request RAM for all textures.
-     *  - request(ResourceState::Gpu) will request GPU for all textures.
-     *
-     * @param state Target resource state (Drive, Ram, or Gpu).
-     */
-    void request(resources::ResourceState state);
+            case ResourceState::Drive:
+            default:
+                // Drive is conceptual only.
+                break;
+        }
+    }
 
-    /**
-     * @brief Release a previously requested resource state for this material.
-     *
-     * This forwards the release to all referenced textures.
-     *
-     * @param state Target resource state (Ram or Gpu).
-     */
-    void release(resources::ResourceState state);
+    void impl_unload(ResourceState state) override {
+        switch (state) {
+            case ResourceState::Cpu:
+                logging::log(reslog::MATERIAL, logging::DEBUG,
+                             "CPU release material '" + name_ + "'");
+                // We typically keep properties_ in memory; no-op.
+                break;
 
-    /**
-     * @brief Query whether this material is effectively in @p state.
-     *
-     * Since a Material is an aggregate of textures, the state is derived
-     * from the states of all referenced textures:
-     *  - Drive: always considered true.
-     *  - Ram: true if every texture is at least in Ram or Gpu.
-     *  - Gpu: true if every texture is in Gpu.
-     *
-     * If the material references no textures, this returns true for all
-     * states (since constants are always available).
-     */
-    [[nodiscard]] bool is_in_state(resources::ResourceState state) const;
+            case ResourceState::Gpu:
+                logging::log(reslog::MATERIAL, logging::INFO,
+                             "GPU release material '" + name_ + "'");
+                release_textures_gpu();
+                gpu_dirty_ = true; // If re-acquired, SSBO entry should be refreshed
+                break;
 
-  private:
+            case ResourceState::Drive:
+            default:
+                break;
+        }
+    }
+
+    private:
+    void acquire_textures_gpu() {
+        auto req_tex = [](const std::shared_ptr<Texture>& tex) {
+            if (tex) tex->require(ResourceState::Gpu);
+        };
+
+        auto& p = properties_;
+        req_tex(p.base_color.texture);
+        req_tex(p.emission_color.texture);
+        req_tex(p.sheen_color.texture);
+        req_tex(p.subsurface_color.texture);
+        req_tex(p.subsurface_radius.texture);
+
+        req_tex(p.roughness.texture);
+        req_tex(p.metallic.texture);
+        req_tex(p.specular.texture);
+        req_tex(p.specular_tint.texture);
+        req_tex(p.transmission.texture);
+        req_tex(p.transmission_roughness.texture);
+        req_tex(p.clearcoat.texture);
+        req_tex(p.clearcoat_roughness.texture);
+        req_tex(p.subsurface.texture);
+        req_tex(p.sheen.texture);
+        req_tex(p.sheen_tint.texture);
+        req_tex(p.anisotropic.texture);
+        req_tex(p.ior.texture);
+        req_tex(p.anisotropic_rotation.texture);
+        req_tex(p.emission_strength.texture);
+
+        req_tex(p.normal_map);
+        req_tex(p.displacement_map);
+        req_tex(p.ambient_occlusion_map);
+    }
+
+    void release_textures_gpu() {
+        auto rel_tex = [](const std::shared_ptr<Texture>& tex) {
+            if (tex) tex->release(ResourceState::Gpu);
+        };
+
+        auto& p = properties_;
+        rel_tex(p.base_color.texture);
+        rel_tex(p.emission_color.texture);
+        rel_tex(p.sheen_color.texture);
+        rel_tex(p.subsurface_color.texture);
+        rel_tex(p.subsurface_radius.texture);
+
+        rel_tex(p.roughness.texture);
+        rel_tex(p.metallic.texture);
+        rel_tex(p.specular.texture);
+        rel_tex(p.specular_tint.texture);
+        rel_tex(p.transmission.texture);
+        rel_tex(p.transmission_roughness.texture);
+        rel_tex(p.clearcoat.texture);
+        rel_tex(p.clearcoat_roughness.texture);
+        rel_tex(p.subsurface.texture);
+        rel_tex(p.sheen.texture);
+        rel_tex(p.sheen_tint.texture);
+        rel_tex(p.anisotropic.texture);
+        rel_tex(p.ior.texture);
+        rel_tex(p.anisotropic_rotation.texture);
+        rel_tex(p.emission_strength.texture);
+
+        rel_tex(p.normal_map);
+        rel_tex(p.displacement_map);
+        rel_tex(p.ambient_occlusion_map);
+    }
+
     std::string        name_;
     MaterialProperties properties_;
+    bool               gpu_dirty_{true}; // start dirty so first upload initializes it
 };

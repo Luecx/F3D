@@ -6,21 +6,17 @@
 class Material;
 
 /**
- * @brief Represents a sub-range of a mesh's index buffer together with a material.
+ * @brief Represents a sub-range of a mesh's index buffer with an associated material.
  *
- * A Submesh is purely CPU-side information. It stores:
- *  - @ref index_offset : first index in the mesh's index buffer.
- *  - @ref index_count  : number of indices in this submesh.
- *  - @ref material     : the material assigned to this submesh.
- *
- * Submeshes do not contain any GPU data. They are consumed later by
- * MeshGroupGPUData when building the aggregated draw list for a chunk.
+ * Purely CPU-side information:
+ *  - index_offset / index_count describe a range in MeshCPUData::indices.
+ *  - material is a shared_ptr<Material> for rendering.
  */
 struct Submesh {
     /// First index within the mesh's index buffer.
     std::size_t index_offset{0};
 
-    /// Number of indices that belong to this submesh.
+    /// Number of indices belonging to this submesh.
     std::size_t index_count{0};
 
     /// Material referenced by this submesh. May be nullptr for a default material.

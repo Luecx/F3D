@@ -1,102 +1,84 @@
 #pragma once
 
-#include <cstddef>
+#include <unordered_map>
 #include <memory>
+#include <string>
 #include <vector>
+#include <cstdint>
 
-#include "material_gpu.h"
-#include "material_properties.h"
 #include "material.h"
-
-#include "../resource_types.h"
 #include "../../gldata/ssbo_data.h"
 
-class Texture;
-
 /**
- * @brief Manages a list of materials and their GPU representation.
+ * @brief Global material manager holding:
+ *   - All material objects (name → material)
+ *   - Ordering of materials packed into the global SSBO
+ *   - Pointer → index mapping for stable SSBO indices
  *
- * MaterialManager is responsible for:
- *  - Owning a list of @ref Material objects.
- *  - Converting each Material into @ref GPU_Material.
- *  - Packing these GPU_Material structs into a single SSBO.
- *
- * It does NOT parse files or handle higher-level resource lookup; that is
- * left to your resource / asset systems. This class only deals with:
- *
- *  - CPU material objects.
- *  - Their GPU-packed representation.
- *  - An SSBO bound at a fixed binding point.
+ * Responsibilities:
+ *   - Own creation/find of Materials
+ *   - Own mapping of Material → SSBO index
+ *   - Pack all materials into the global GPU SSBO
  */
 class MaterialManager {
-  public:
+    public:
+    using Ptr = std::shared_ptr<MaterialManager>;
+
+    MaterialManager() = default;
+
+    // ------------------------------------------------------------
+    // Material lookup / creation
+    // ------------------------------------------------------------
+
+    /// Returns existing material or creates a new one.
+    std::shared_ptr<Material> get_or_create(const std::string& name);
+
+    /// Returns existing material or nullptr.
+    std::shared_ptr<Material> get(const std::string& name) const;
+
+    /// Add or override a material explicitly.
+    void set(const std::string& name, const std::shared_ptr<Material>& mat);
+
+    // ------------------------------------------------------------
+    // Material indexing for SSBO
+    // ------------------------------------------------------------
+
     /**
-     * @brief Construct the manager and allocate an initial SSBO capacity.
+     * @brief Assign (or return existing) stable index for this material.
      *
-     * The SSBO is created with an initial capacity (e.g. 1024 materials)
-     * and bound to the binding point that matches mat.glsl.
+     * This index corresponds to an entry in `ordered_` and in the SSBO.
      */
-    MaterialManager();
+    std::uint32_t get_or_assign_index(const std::shared_ptr<Material>& mat);
 
     /**
-     * @brief Destroy the manager. GPU buffers are released automatically
-     *        via SSBOData RAII.
+     * @brief Retrieve an index WITHOUT assigning one.
+     * Returns UINT32_MAX if not found.
      */
-    ~MaterialManager();
+    std::uint32_t try_get_index(const std::shared_ptr<Material>& mat) const;
 
-    /**
-     * @brief Add a material to the manager and return its index.
-     *
-     * The material is appended to the internal list. If capacity is exceeded,
-     * the internal buffers are grown on the next @ref update_gpu_buffer call.
-     */
-    std::size_t add_material(const std::shared_ptr<Material>& material);
+    // ------------------------------------------------------------
+    // GPU operations
+    // ------------------------------------------------------------
 
-    /**
-     * @brief Retrieve a material by index (or nullptr if out of range).
-     */
-    [[nodiscard]] std::shared_ptr<Material> get_material(std::size_t index) const;
+    /// Upload all materials in ordered_ into the SSBO.
+    void update_gpu_materials();
 
-    /**
-     * @brief Rebuild and upload the GPU representation of all materials.
-     *
-     * This method:
-     *  - Requests GPU state for each material (which forwards to its textures).
-     *  - Converts each Material into a GPU_Material struct.
-     *  - Writes a tightly packed array to the SSBO, zero-filling unused slots.
-     *
-     * You can call this once after asset loading, or whenever material
-     * properties / texture assignments change. For a few thousand materials,
-     * rebuilding the buffer every frame is usually acceptable on desktop.
-     */
-    void update_gpu_buffer();
+    /// Returns the GPU SSBO pointer (may be nullptr).
+    const std::shared_ptr<SSBOData>& ssbo() const { return material_ssbo_; }
 
-    /**
-     * @brief Get the underlying SSBO that stores the GPU_Material array.
-     *
-     * This SSBO must be bound to the same binding point used by the GLSL
-     * declaration in mat.glsl:
-     *
-     * layout(std430, binding = 3) buffer MaterialBuffer {
-     *     GPU_Material materials[];
-     * };
-     */
-    [[nodiscard]] std::shared_ptr<SSBOData> get_ssbo() const;
+    /// Number of materials packed into SSBO.
+    std::size_t material_count() const { return ordered_.size(); }
 
-    /**
-     * @brief Dump state of all materials and their texture dependencies.
-     */
-    void dump_state(int indent = 0) const;
+    private:
+    // All materials: name → material
+    std::unordered_map<std::string, std::shared_ptr<Material>> materials_;
 
-  private:
-    // Conversion helpers:
-    GPU_ColorComponent   convert_to_gpu_color_component(const ColorComponent& comp) const;
-    GPU_ScalarComponent  convert_to_gpu_scalar_component(const FloatComponent& comp) const;
-    GPU_TextureComponent convert_to_gpu_texture_component(const std::shared_ptr<Texture>& tex) const;
-    GPU_Material         convert_to_gpu_material(const Material& mat) const;
+    // Material table for SSBO upload: stable identity by index
+    std::vector<std::shared_ptr<Material>> ordered_;
 
-  private:
-    std::vector<std::shared_ptr<Material>> _materials;     ///< List of CPU materials.
-    std::size_t                            _allocated_count; ///< Allocated GPU slots.
-    std::shared_ptr<SSBOData>              _ssbo_buffer;   ///< SSBO holding GPU_Material array.
+    // Reverse mapping: material pointer → index in ordered_
+    std::unordered_map<Material*, std::uint32_t> material_to_index_;
+
+    // GPU material buffer
+    std::shared_ptr<SSBOData> material_ssbo_;
 };

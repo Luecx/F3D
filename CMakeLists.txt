@@ -13,6 +13,10 @@ file(GLOB_RECURSE SOURCES
     src/*.c
     src/*.h)
 
+# Ensure new material property implementation is included.
+list(APPEND SOURCES
+    src/resource/materials/material_properties.cpp)
+
 
 add_executable(F3D ${SOURCES})
 

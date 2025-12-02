@@ -23,7 +23,6 @@ bool MeshCPUData::is_valid() const {
         return false;
     }
 
-    // Submeshes must lie within the index buffer range.
     const std::size_t ic = index_count();
     for (const auto& sm : submeshes) {
         if (sm.index_offset + sm.index_count > ic) {

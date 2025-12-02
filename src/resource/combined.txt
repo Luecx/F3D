@@ -1,0 +1,1524 @@
+#include "material.h"
+#pragma once
+
+#include <memory>
+
+#include "../resource_base.h"
+#include "../resource_state.h"
+#include "../resource_logging.h"
+#include "../../logging/logging.h"
+#include "../textures/texture.h"
+#include "material_properties.h"
+
+/**
+ * Material resource with properties and texture slots.
+ */
+class Material : public ResourceBase, public std::enable_shared_from_this<Material> {
+  public:
+    using Ptr = std::shared_ptr<Material>;
+
+    explicit Material(std::string name = {}) : name_(std::move(name)) { properties_.set_defaults(); }
+
+    const std::string& name() const { return name_; }
+    MaterialProperties& properties() { return properties_; }
+    const MaterialProperties& properties() const { return properties_; }
+
+  protected:
+    void on_require_drive() override {}
+    void on_release_drive() override {}
+
+    void on_first_cpu_acquire() override {
+        logging::log(reslog::MATERIAL, logging::DEBUG, "CPU acquire material '" + name_ + "'");
+    }
+
+    void on_last_cpu_release() override {
+        logging::log(reslog::MATERIAL, logging::DEBUG, "CPU release material '" + name_ + "'");
+    }
+
+    void on_first_gpu_acquire() override {
+        logging::log(reslog::MATERIAL, logging::INFO, "GPU acquire material '" + name_ + "'");
+        // propagate to textures
+        auto req_tex = [](const std::shared_ptr<Texture>& tex) { if (tex) tex->require(ResourceState::Gpu); };
+        req_tex(properties_.base_color.texture);
+        req_tex(properties_.emission_color.texture);
+        req_tex(properties_.sheen_color.texture);
+        req_tex(properties_.subsurface_color.texture);
+        req_tex(properties_.subsurface_radius.texture);
+        req_tex(properties_.roughness.texture);
+        req_tex(properties_.metallic.texture);
+        req_tex(properties_.specular.texture);
+        req_tex(properties_.specular_tint.texture);
+        req_tex(properties_.transmission.texture);
+        req_tex(properties_.transmission_roughness.texture);
+        req_tex(properties_.clearcoat.texture);
+        req_tex(properties_.clearcoat_roughness.texture);
+        req_tex(properties_.subsurface.texture);
+        req_tex(properties_.sheen.texture);
+        req_tex(properties_.sheen_tint.texture);
+        req_tex(properties_.anisotropic.texture);
+        req_tex(properties_.ior.texture);
+        req_tex(properties_.anisotropic_rotation.texture);
+        req_tex(properties_.emission_strength.texture);
+        req_tex(properties_.normal_map);
+        req_tex(properties_.displacement_map);
+        req_tex(properties_.ambient_occlusion_map);
+    }
+
+    void on_last_gpu_release() override {
+        logging::log(reslog::MATERIAL, logging::INFO, "GPU release material '" + name_ + "'");
+        auto rel_tex = [](const std::shared_ptr<Texture>& tex) { if (tex) tex->release(ResourceState::Gpu); };
+        rel_tex(properties_.base_color.texture);
+        rel_tex(properties_.emission_color.texture);
+        rel_tex(properties_.sheen_color.texture);
+        rel_tex(properties_.subsurface_color.texture);
+        rel_tex(properties_.subsurface_radius.texture);
+        rel_tex(properties_.roughness.texture);
+        rel_tex(properties_.metallic.texture);
+        rel_tex(properties_.specular.texture);
+        rel_tex(properties_.specular_tint.texture);
+        rel_tex(properties_.transmission.texture);
+        rel_tex(properties_.transmission_roughness.texture);
+        rel_tex(properties_.clearcoat.texture);
+        rel_tex(properties_.clearcoat_roughness.texture);
+        rel_tex(properties_.subsurface.texture);
+        rel_tex(properties_.sheen.texture);
+        rel_tex(properties_.sheen_tint.texture);
+        rel_tex(properties_.anisotropic.texture);
+        rel_tex(properties_.ior.texture);
+        rel_tex(properties_.anisotropic_rotation.texture);
+        rel_tex(properties_.emission_strength.texture);
+        rel_tex(properties_.normal_map);
+        rel_tex(properties_.displacement_map);
+        rel_tex(properties_.ambient_occlusion_map);
+    }
+
+  private:
+    std::string name_;
+    MaterialProperties properties_;
+};
+#pragma once
+
+#include <memory>
+#include <string>
+#include "../../logging/logging.h"
+#include "../resource_logging.h"
+#include "../textures/texture.h"
+
+enum class ComponentMode { CONSTANT, TEXTURE };
+
+struct ColorComponent {
+    ComponentMode mode{ComponentMode::CONSTANT};
+    float r{1.0f}, g{1.0f}, b{1.0f};
+    std::shared_ptr<Texture> texture;
+
+    void set_constant(float r_in, float g_in, float b_in) {
+        r = r_in; g = g_in; b = b_in;
+        texture.reset();
+        mode = ComponentMode::CONSTANT;
+    }
+    void set_texture(const std::shared_ptr<Texture>& tex) {
+        texture = tex;
+        mode = tex ? ComponentMode::TEXTURE : ComponentMode::CONSTANT;
+    }
+};
+
+struct FloatComponent {
+    ComponentMode mode{ComponentMode::CONSTANT};
+    float value{0.0f};
+    std::shared_ptr<Texture> texture;
+
+    void set_constant(float v) {
+        value = v;
+        texture.reset();
+        mode = ComponentMode::CONSTANT;
+    }
+    void set_texture(const std::shared_ptr<Texture>& tex) {
+        texture = tex;
+        mode = tex ? ComponentMode::TEXTURE : ComponentMode::CONSTANT;
+    }
+};
+#pragma once
+
+#include <cstdint>
+
+struct GPU_ColorComponent {
+    int enabled;
+    float color[3];
+    std::uint64_t texture_handle;
+};
+
+struct GPU_ScalarComponent {
+    int enabled;
+    float value;
+    std::uint64_t texture_handle;
+};
+
+struct GPU_TextureComponent {
+    int enabled;
+    std::uint64_t texture_handle;
+    int padding1, padding2, padding3;
+};
+
+struct GPU_Material {
+    GPU_ColorComponent base_color;
+    GPU_ColorComponent emission;
+    GPU_ColorComponent sheen_color;
+    GPU_ColorComponent subsurface_color;
+    GPU_ColorComponent subsurface_radius;
+
+    GPU_ScalarComponent roughness;
+    GPU_ScalarComponent metallic;
+    GPU_ScalarComponent specular;
+    GPU_ScalarComponent specular_tint;
+    GPU_ScalarComponent transmission;
+    GPU_ScalarComponent transmission_roughness;
+    GPU_ScalarComponent clearcoat;
+    GPU_ScalarComponent clearcoat_roughness;
+    GPU_ScalarComponent subsurface;
+    GPU_ScalarComponent sheen;
+    GPU_ScalarComponent sheen_tint;
+    GPU_ScalarComponent anisotropy;
+
+    float ior;
+    float anisotropy_rotation;
+    float padding1;
+    float padding2;
+
+    GPU_TextureComponent normal_map;
+    GPU_TextureComponent displacement_map;
+    GPU_TextureComponent ambient_occlusion_map;
+};
+#include "material_manager.h"
+#include "../../logging/logging.h"
+#include "../resource_logging.h"
+
+std::shared_ptr<Material> MaterialManager::get(const std::string& name) {
+    auto it = materials_.find(name);
+    if (it != materials_.end()) return it->second;
+    auto mat = std::make_shared<Material>(name);
+    materials_[name] = mat;
+    ordered_.push_back(mat);
+    return mat;
+}
+
+void MaterialManager::require(const std::string& name, ResourceState state) {
+    auto mat = get(name);
+    if (mat) mat->require(state);
+}
+
+void MaterialManager::release(const std::string& name, ResourceState state) {
+    auto it = materials_.find(name);
+    if (it != materials_.end() && it->second) {
+        it->second->release(state);
+    }
+}
+
+GPU_ColorComponent MaterialManager::convert_to_gpu_color_component(const ColorComponent& comp) const {
+    GPU_ColorComponent gpu{};
+    if (comp.mode == ComponentMode::TEXTURE && comp.texture) {
+        comp.texture->require(ResourceState::Gpu);
+        gpu.enabled = 1;
+        gpu.texture_handle = comp.texture->gpu_data() ? comp.texture->gpu_data()->get_handle() : 0;
+        gpu.color[0] = gpu.color[1] = gpu.color[2] = 0.0f;
+    } else {
+        gpu.enabled = 0;
+        gpu.texture_handle = 0;
+        gpu.color[0] = comp.r;
+        gpu.color[1] = comp.g;
+        gpu.color[2] = comp.b;
+    }
+    return gpu;
+}
+
+GPU_ScalarComponent MaterialManager::convert_to_gpu_scalar_component(const FloatComponent& comp) const {
+    GPU_ScalarComponent gpu{};
+    if (comp.mode == ComponentMode::TEXTURE && comp.texture) {
+        comp.texture->require(ResourceState::Gpu);
+        gpu.enabled = 1;
+        gpu.texture_handle = comp.texture->gpu_data() ? comp.texture->gpu_data()->get_handle() : 0;
+        gpu.value = 0.0f;
+    } else {
+        gpu.enabled = 0;
+        gpu.texture_handle = 0;
+        gpu.value = comp.value;
+    }
+    return gpu;
+}
+
+GPU_TextureComponent MaterialManager::convert_to_gpu_texture_component(const std::shared_ptr<Texture>& tex) const {
+    GPU_TextureComponent gpu{};
+    if (tex) {
+        tex->require(ResourceState::Gpu);
+        gpu.enabled = 1;
+        gpu.texture_handle = tex->gpu_data() ? tex->gpu_data()->get_handle() : 0;
+    }
+    gpu.padding1 = gpu.padding2 = gpu.padding3 = 0;
+    return gpu;
+}
+
+GPU_Material MaterialManager::convert_to_gpu_material(const Material& mat) const {
+    GPU_Material gpu{};
+    const auto& p = mat.properties();
+    gpu.base_color           = convert_to_gpu_color_component(p.base_color);
+    gpu.emission             = convert_to_gpu_color_component(p.emission_color);
+    gpu.sheen_color          = convert_to_gpu_color_component(p.sheen_color);
+    gpu.subsurface_color     = convert_to_gpu_color_component(p.subsurface_color);
+    gpu.subsurface_radius    = convert_to_gpu_color_component(p.subsurface_radius);
+
+    gpu.roughness            = convert_to_gpu_scalar_component(p.roughness);
+    gpu.metallic             = convert_to_gpu_scalar_component(p.metallic);
+    gpu.specular             = convert_to_gpu_scalar_component(p.specular);
+    gpu.specular_tint        = convert_to_gpu_scalar_component(p.specular_tint);
+    gpu.transmission         = convert_to_gpu_scalar_component(p.transmission);
+    gpu.transmission_roughness = convert_to_gpu_scalar_component(p.transmission_roughness);
+    gpu.clearcoat            = convert_to_gpu_scalar_component(p.clearcoat);
+    gpu.clearcoat_roughness  = convert_to_gpu_scalar_component(p.clearcoat_roughness);
+    gpu.subsurface           = convert_to_gpu_scalar_component(p.subsurface);
+    gpu.sheen                = convert_to_gpu_scalar_component(p.sheen);
+    gpu.sheen_tint           = convert_to_gpu_scalar_component(p.sheen_tint);
+    gpu.anisotropy           = convert_to_gpu_scalar_component(p.anisotropic);
+
+    gpu.ior                  = p.ior.value;
+    gpu.anisotropy_rotation  = p.anisotropic_rotation.value;
+    gpu.padding1 = gpu.padding2 = 0.f;
+
+    gpu.normal_map           = convert_to_gpu_texture_component(p.normal_map);
+    gpu.displacement_map     = convert_to_gpu_texture_component(p.displacement_map);
+    gpu.ambient_occlusion_map= convert_to_gpu_texture_component(p.ambient_occlusion_map);
+    return gpu;
+}
+
+std::size_t MaterialManager::add_material(const std::shared_ptr<Material>& material) {
+    if (!material) return static_cast<std::size_t>(-1);
+    ordered_.push_back(material);
+    return ordered_.size() - 1;
+}
+
+void MaterialManager::update_gpu_materials() {
+    if (!ssbo_) {
+        ssbo_ = std::make_shared<SSBOData>();
+    }
+    if (ordered_.empty()) return;
+
+    if (allocated_ < ordered_.size()) {
+        allocated_ = ((ordered_.size() + 63) / 64) * 64;
+    }
+
+    std::vector<GPU_Material> gpu_materials;
+    gpu_materials.reserve(allocated_);
+    for (auto& m : ordered_) {
+        gpu_materials.push_back(convert_to_gpu_material(*m));
+    }
+    gpu_materials.resize(allocated_);
+
+    ssbo_->update_data(static_cast<GLsizeiptr>(gpu_materials.size() * sizeof(GPU_Material)), gpu_materials.data());
+    ssbo_->bind(3);
+    logging::log(reslog::MATERIAL, logging::INFO, "Material SSBO updated (" + std::to_string(ordered_.size()) + " mats)");
+}
+
+void MaterialManager::dump_state(int indent) const {
+    std::string pad(indent, ' ');
+    logging::log(reslog::MATERIAL, logging::INFO, pad + "Materials:");
+    for (size_t i = 0; i < ordered_.size(); ++i) {
+        const auto& m = ordered_[i];
+        logging::log(reslog::MATERIAL, logging::INFO, pad + "  [" + std::to_string(i) + "] " + m->name());
+    }
+}
+#pragma once
+
+#include <memory>
+#include <unordered_map>
+#include <string>
+
+#include "material.h"
+#include "material_gpu.h"
+#include "../../gldata/ssbo_data.h"
+#include "../resource_state.h"
+
+/**
+ * Simple material manager for deduplication and GPU updates.
+ */
+class MaterialManager {
+  public:
+    MaterialManager() = default;
+
+    std::shared_ptr<Material> get(const std::string& name);
+
+    void require(const std::string& name, ResourceState state);
+    void release(const std::string& name, ResourceState state);
+
+    std::size_t add_material(const std::shared_ptr<Material>& material);
+    void update_gpu_materials();
+    void dump_state(int indent = 0) const;
+
+  private:
+    GPU_ColorComponent   convert_to_gpu_color_component(const ColorComponent& comp) const;
+    GPU_ScalarComponent  convert_to_gpu_scalar_component(const FloatComponent& comp) const;
+    GPU_TextureComponent convert_to_gpu_texture_component(const std::shared_ptr<Texture>& tex) const;
+    GPU_Material         convert_to_gpu_material(const Material& mat) const;
+
+    std::unordered_map<std::string, std::shared_ptr<Material>> materials_;
+    std::vector<std::shared_ptr<Material>> ordered_;
+    std::size_t allocated_{0};
+    std::shared_ptr<SSBOData> ssbo_;
+};
+#include "../textures/texture.h"
+#include "material_properties.h"
+
+void MaterialProperties::set_defaults() {
+    base_color.set_constant(1.0f, 1.0f, 1.0f);
+    subsurface_color.set_constant(1.0f, 1.0f, 1.0f);
+    subsurface_radius.set_constant(1.0f, 1.0f, 1.0f);
+    emission_color.set_constant(0.0f, 0.0f, 0.0f);
+
+    metallic.set_constant(0.0f);
+    specular.set_constant(0.5f);
+    specular_tint.set_constant(0.0f);
+    roughness.set_constant(0.5f);
+    anisotropic.set_constant(0.0f);
+    anisotropic_rotation.set_constant(0.0f);
+    subsurface.set_constant(0.0f);
+    sheen.set_constant(0.0f);
+    sheen_tint.set_constant(0.5f);
+    clearcoat.set_constant(0.0f);
+    clearcoat_roughness.set_constant(0.03f);
+    ior.set_constant(1.45f);
+    transmission.set_constant(0.0f);
+    transmission_roughness.set_constant(0.0f);
+    emission_strength.set_constant(0.0f);
+
+    normal_map.reset();
+    displacement_map.reset();
+    ambient_occlusion_map.reset();
+}
+#pragma once
+
+#include "material_components.h"
+
+struct MaterialProperties {
+    ColorComponent base_color;
+    ColorComponent emission_color;
+    ColorComponent sheen_color;
+    ColorComponent subsurface_color;
+    ColorComponent subsurface_radius;
+
+    FloatComponent roughness;
+    FloatComponent metallic;
+    FloatComponent specular;
+    FloatComponent specular_tint;
+    FloatComponent transmission;
+    FloatComponent transmission_roughness;
+    FloatComponent clearcoat;
+    FloatComponent clearcoat_roughness;
+    FloatComponent subsurface;
+    FloatComponent sheen;
+    FloatComponent sheen_tint;
+    FloatComponent anisotropic;
+    FloatComponent ior;
+    FloatComponent anisotropic_rotation;
+    FloatComponent emission_strength;
+
+    std::shared_ptr<Texture> normal_map;
+    std::shared_ptr<Texture> displacement_map;
+    std::shared_ptr<Texture> ambient_occlusion_map;
+
+    void set_defaults();
+};
+#include "mesh.h"
+
+#include <fstream>
+#include <sstream>
+#include <unordered_map>
+#include <algorithm>
+#include <filesystem>
+#include "../textures/texture_manager.h"
+#include "../materials/material_manager.h"
+
+void Mesh::on_first_cpu_acquire() {
+    if (cpu_data_) return;
+    logging::log(reslog::MESH, logging::INFO, "Loading mesh '" + path_ + "'");
+
+    std::ifstream file(path_);
+    if (!file.is_open()) {
+        logging::log(reslog::MESH, logging::ERROR, "Cannot open mesh file '" + path_ + "'");
+        cpu_data_ = std::make_unique<MeshCPUData>();
+        return;
+    }
+
+    std::vector<float> obj_positions;
+    std::vector<float> obj_normals;
+    std::vector<float> obj_texcoords;
+
+    struct Idx {
+        int v{-1}, vt{-1}, vn{-1};
+        bool operator==(const Idx& o) const { return v==o.v && vt==o.vt && vn==o.vn; }
+    };
+    struct Face { Idx a,b,c; std::string mtl; };
+    std::vector<Face> faces;
+
+    // material name -> material ptr
+    std::unordered_map<std::string, std::shared_ptr<Material>> materials;
+
+    auto load_mtl = [&](const std::string& mtl_rel) {
+        if (!mat_mgr_ || !tex_mgr_) return;
+        auto base = std::filesystem::path(path_).parent_path();
+        std::filesystem::path mtl_path = base / mtl_rel;
+        std::ifstream mtl(mtl_path);
+        if (!mtl.is_open()) {
+            logging::log(reslog::MESH, logging::WARNING, "Could not open MTL '" + mtl_path.string() + "'");
+            return;
+        }
+        std::string line, cur;
+        std::string map_kd, map_bump;
+        while (std::getline(mtl, line)) {
+            if (line.empty() || line[0]=='#') continue;
+            std::istringstream iss(line);
+            std::string tag; iss >> tag;
+            if (tag == "newmtl") {
+                if (!cur.empty()) {
+                    auto mat = mat_mgr_->get(cur);
+                    if (!map_kd.empty()) mat->properties().base_color.set_texture(tex_mgr_->get((base / map_kd).string()));
+                    if (!map_bump.empty()) mat->properties().normal_map = tex_mgr_->get((base / map_bump).string());
+                    materials[cur] = mat;
+                }
+                iss >> cur;
+                map_kd.clear(); map_bump.clear();
+            } else if (tag == "map_Kd") {
+                iss >> map_kd;
+            } else if (tag == "map_Bump" || tag == "map_bump") {
+                iss >> map_bump;
+            }
+        }
+        if (!cur.empty()) {
+            auto mat = mat_mgr_->get(cur);
+            if (!map_kd.empty()) mat->properties().base_color.set_texture(tex_mgr_->get((base / map_kd).string()));
+            if (!map_bump.empty()) mat->properties().normal_map = tex_mgr_->get((base / map_bump).string());
+            materials[cur] = mat;
+        }
+    };
+
+    std::string line;
+    std::string current_mtl;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0]=='#') continue;
+        std::istringstream iss(line);
+        std::string tag; iss >> tag;
+        if (tag == "v") {
+            float x,y,z; if (iss>>x>>y>>z) { obj_positions.insert(obj_positions.end(),{x,y,z}); }
+        } else if (tag == "vt") {
+            float u,v; if (iss>>u>>v) { obj_texcoords.insert(obj_texcoords.end(),{u,v}); }
+        } else if (tag == "vn") {
+            float nx,ny,nz; if (iss>>nx>>ny>>nz) { obj_normals.insert(obj_normals.end(),{nx,ny,nz}); }
+        } else if (tag == "mtllib") {
+            std::string mtlfile;
+            if (iss>>mtlfile) load_mtl(mtlfile);
+        } else if (tag == "usemtl") {
+            iss >> current_mtl;
+        } else if (tag == "f") {
+            std::string vert; std::vector<Idx> vtx;
+            while (iss >> vert) {
+                Idx idx;
+                std::replace(vert.begin(), vert.end(), '/', ' ');
+                std::istringstream viss(vert);
+                viss >> idx.v;
+                if (!(viss >> idx.vt)) idx.vt = -1;
+                if (!(viss >> idx.vn)) idx.vn = -1;
+                if (idx.v>0) idx.v--;
+                if (idx.vt>0) idx.vt--;
+                if (idx.vn>0) idx.vn--;
+                vtx.push_back(idx);
+            }
+            for (std::size_t i=1;i+1<vtx.size();++i) {
+                faces.push_back({vtx[0], vtx[i], vtx[i+1], current_mtl});
+            }
+        }
+    }
+
+    cpu_data_ = std::make_unique<MeshCPUData>();
+    auto& cpu = *cpu_data_;
+
+    struct Hash {
+        std::size_t operator()(const Idx& i) const noexcept {
+            return std::hash<int>()(i.v) ^ (std::hash<int>()(i.vt)<<1) ^ (std::hash<int>()(i.vn)<<2);
+        }
+    };
+    std::unordered_map<Idx,uint32_t,Hash> remap;
+
+    auto add = [&](const Idx& idx)->uint32_t{
+        auto it=remap.find(idx);
+        if (it!=remap.end()) return it->second;
+        uint32_t id = static_cast<uint32_t>(cpu.positions.size()/3);
+        if (idx.v>=0) {
+            auto p = idx.v*3;
+            cpu.positions.push_back(obj_positions[p]);
+            cpu.positions.push_back(obj_positions[p+1]);
+            cpu.positions.push_back(obj_positions[p+2]);
+        } else {
+            cpu.positions.insert(cpu.positions.end(), {0.f,0.f,0.f});
+        }
+        if (!obj_texcoords.empty()) {
+            if (idx.vt>=0) {
+                auto t = idx.vt*2;
+                cpu.texcoords.push_back(obj_texcoords[t]);
+                cpu.texcoords.push_back(obj_texcoords[t+1]);
+            } else {
+                cpu.texcoords.insert(cpu.texcoords.end(), {0.f,0.f});
+            }
+        }
+        if (!obj_normals.empty()) {
+            if (idx.vn>=0) {
+                auto n = idx.vn*3;
+                cpu.normals.push_back(obj_normals[n]);
+                cpu.normals.push_back(obj_normals[n+1]);
+                cpu.normals.push_back(obj_normals[n+2]);
+            } else {
+                cpu.normals.insert(cpu.normals.end(), {0.f,0.f,1.f});
+            }
+        }
+        remap[idx]=id;
+        return id;
+    };
+
+    // group faces by material
+    struct SubAccum { std::vector<uint32_t> inds; std::shared_ptr<Material> mat; };
+    std::vector<SubAccum> subaccum;
+    auto find_or_add = [&](const std::string& mtl)->SubAccum&{
+        for (auto& s: subaccum) {
+            if ((s.mat && s.mat->name()==mtl) || (!s.mat && mtl.empty())) return s;
+        }
+        subaccum.push_back(SubAccum{});
+        if (!mtl.empty()) {
+            auto it = materials.find(mtl);
+            if (it!=materials.end()) subaccum.back().mat = it->second;
+        }
+        return subaccum.back();
+    };
+
+    for (auto& f: faces) {
+        auto& sub = find_or_add(f.mtl);
+        sub.inds.push_back(add(f.a));
+        sub.inds.push_back(add(f.b));
+        sub.inds.push_back(add(f.c));
+    }
+
+    size_t offset = 0;
+    for (auto& sub : subaccum) {
+        Submesh sm;
+        sm.index_offset = offset;
+        sm.index_count  = sub.inds.size();
+        sm.material     = sub.mat;
+        cpu.indices.insert(cpu.indices.end(), sub.inds.begin(), sub.inds.end());
+        cpu.submeshes.push_back(sm);
+        offset += sub.inds.size();
+    }
+
+    logging::log(reslog::MESH, logging::INFO, "Loaded mesh '" + path_ + "' verts=" +
+                                             std::to_string(cpu.vertex_count()) + " tris=" +
+                                             std::to_string(cpu.index_count()/3));
+}
+
+void Mesh::on_last_cpu_release() {
+    cpu_data_.reset();
+    logging::log(reslog::MESH, logging::INFO, "Released CPU mesh '" + path_ + "'");
+}
+#pragma once
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "../resource_base.h"
+#include "../resource_state.h"
+#include "../resource_logging.h"
+#include "../../logging/logging.h"
+#include "mesh_cpu_data.h"
+#include "submesh.h"
+
+class TextureManager;
+class MaterialManager;
+
+/**
+ * CPU-only mesh resource.
+ */
+class Mesh : public ResourceBase, public std::enable_shared_from_this<Mesh> {
+  public:
+    using Ptr = std::shared_ptr<Mesh>;
+
+    Mesh(std::string path, TextureManager* tex_mgr = nullptr, MaterialManager* mat_mgr = nullptr)
+        : path_(std::move(path)), tex_mgr_(tex_mgr), mat_mgr_(mat_mgr) {}
+
+    const std::string& path() const { return path_; }
+    const MeshCPUData* cpu() const { return cpu_data_.get(); }
+    MeshCPUData* cpu() { return cpu_data_.get(); }
+
+  protected:
+    void on_require_drive() override {}
+    void on_release_drive() override {}
+
+    void on_first_cpu_acquire() override;
+    void on_last_cpu_release() override;
+    void on_first_gpu_acquire() override {} // Mesh has no GPU part
+    void on_last_gpu_release() override {}  // Mesh has no GPU part
+
+  private:
+    std::string path_;
+    std::unique_ptr<MeshCPUData> cpu_data_;
+    TextureManager* tex_mgr_{nullptr};
+    MaterialManager* mat_mgr_{nullptr};
+};
+#include "mesh_cpu_data.h"
+
+bool MeshCPUData::is_valid() const {
+    // Positions must be a multiple of 3 floats.
+    if (positions.size() % 3 != 0) {
+        return false;
+    }
+
+    const std::size_t v = vertex_count();
+
+    // Normals, if present, must match vertex count (3 floats per vertex).
+    if (!normals.empty() && normals.size() != v * 3) {
+        return false;
+    }
+
+    // Texcoords, if present, must match vertex count (2 floats per vertex).
+    if (!texcoords.empty() && texcoords.size() != v * 2) {
+        return false;
+    }
+
+    // We require an index buffer for rendering.
+    if (indices.empty()) {
+        return false;
+    }
+
+    // Submeshes must lie within the index buffer range.
+    const std::size_t ic = index_count();
+    for (const auto& sm : submeshes) {
+        if (sm.index_offset + sm.index_count > ic) {
+            return false;
+        }
+    }
+
+    return true;
+}
+#pragma once
+
+#include <vector>
+#include <cstdint>
+
+#include "submesh.h"
+
+/**
+ * @brief Pure CPU-side mesh data.
+ *
+ * This structure contains raw attribute arrays and the index buffer.
+ * It is format-agnostic (you can fill it from OBJ, GLTF, or any custom loader).
+ *
+ * No GPU handles live here. A MeshGroup later aggregates the data of many
+ * MeshCPUData instances into a single VAO/VBO/EBO per chunk.
+ */
+struct MeshCPUData {
+    // ---------------------------------------------------------------------
+    // Vertex attributes
+    // ---------------------------------------------------------------------
+
+    /// Position buffer: 3 floats per vertex (x, y, z).
+    std::vector<float> positions;
+
+    /// Normal buffer: optional, 3 floats per vertex (nx, ny, nz).
+    std::vector<float> normals;
+
+    /// Texture coordinate buffer: optional, 2 floats per vertex (u, v).
+    std::vector<float> texcoords;
+
+    // ---------------------------------------------------------------------
+    // Index buffer
+    // ---------------------------------------------------------------------
+
+    /// Triangle index buffer, referencing vertices by index.
+    std::vector<std::uint32_t> indices;
+
+    // ---------------------------------------------------------------------
+    // Submeshes
+    // ---------------------------------------------------------------------
+
+    /**
+     * @brief Logical submeshes which partition the index buffer.
+     *
+     * Each Submesh defines:
+     *  - index_offset / index_count: a range in @ref indices
+     *  - a Material pointer that should be used when rendering that range
+     */
+    std::vector<Submesh> submeshes;
+
+    // ---------------------------------------------------------------------
+    // Convenience queries
+    // ---------------------------------------------------------------------
+
+    /**
+     * @brief Returns the number of vertices.
+     *
+     * Assumes positions are stored as tightly packed triples of floats.
+     */
+    std::size_t vertex_count() const { return positions.size() / 3; }
+
+    /// Returns the number of indices.
+    std::size_t index_count() const { return indices.size(); }
+
+    /**
+     * @brief Checks semantic correctness of the mesh data.
+     *
+     * Requirements:
+     *  - positions.size() % 3 == 0
+     *  - normals.size()   == vertex_count * 3 (or empty)
+     *  - texcoords.size() == vertex_count * 2 (or empty)
+     *  - indices not empty
+     *  - each submesh's index range fits within indices.size()
+     *
+     * @return true if the data appears consistent, false otherwise.
+     */
+    bool is_valid() const;
+};
+#include "mesh_group.h"
+
+void MeshGroup::on_first_gpu_acquire() {
+    // aggregate CPU data
+    std::vector<float> positions;
+    std::vector<float> normals;
+    std::vector<float> texcoords;
+    std::vector<uint32_t> indices;
+    draws_.clear();
+
+    uint32_t base_vertex = 0;
+    for (auto& mesh : meshes_) {
+        if (!mesh) continue;
+        mesh->require(ResourceState::Cpu);
+        auto cpu = mesh->cpu();
+        if (!cpu || !cpu->is_valid()) continue;
+
+        const auto vcount = static_cast<uint32_t>(cpu->vertex_count());
+        positions.insert(positions.end(), cpu->positions.begin(), cpu->positions.end());
+        if (!cpu->normals.empty()) normals.insert(normals.end(), cpu->normals.begin(), cpu->normals.end());
+        if (!cpu->texcoords.empty()) texcoords.insert(texcoords.end(), cpu->texcoords.begin(), cpu->texcoords.end());
+
+        // offset indices
+        for (auto idx : cpu->indices) {
+            indices.push_back(idx + base_vertex);
+        }
+
+        for (auto& sm : cpu->submeshes) {
+            GpuSubmesh g;
+            g.first_index   = sm.index_offset + static_cast<uint32_t>(indices.size() - cpu->indices.size());
+            g.index_count   = static_cast<uint32_t>(sm.index_count);
+            g.base_vertex   = base_vertex;
+            g.material_index = 0; // TODO: integrate with material table if needed
+            draws_.push_back(g);
+        }
+
+        base_vertex += vcount;
+    }
+
+    if (positions.empty() || indices.empty()) {
+        logging::log(reslog::MESH, logging::ERROR, "MeshGroup build found no geometry");
+        return;
+    }
+
+    vao_ = std::make_unique<VAOData>();
+    vbo_positions_ = std::make_unique<VBOData>(GL_ARRAY_BUFFER);
+    vao_->bind();
+    vbo_positions_->allocate(sizeof(float) * positions.size(), positions.data(), GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+    if (!normals.empty()) {
+        vbo_normals_ = std::make_unique<VBOData>(GL_ARRAY_BUFFER);
+        vbo_normals_->allocate(sizeof(float) * normals.size(), normals.data(), GL_STATIC_DRAW);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    }
+
+    if (!texcoords.empty()) {
+        vbo_texcoords_ = std::make_unique<VBOData>(GL_ARRAY_BUFFER);
+        vbo_texcoords_->allocate(sizeof(float) * texcoords.size(), texcoords.data(), GL_STATIC_DRAW);
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+    }
+
+    ebo_ = std::make_unique<VBOData>(GL_ELEMENT_ARRAY_BUFFER);
+    ebo_->allocate(sizeof(uint32_t) * indices.size(), indices.data(), GL_STATIC_DRAW);
+
+    vao_->unbind();
+    logging::log(reslog::MESH, logging::INFO, "MeshGroup GPU buffers built");
+}
+
+void MeshGroup::on_last_gpu_release() {
+    ebo_.reset();
+    vbo_positions_.reset();
+    vbo_normals_.reset();
+    vbo_texcoords_.reset();
+    vao_.reset();
+    draws_.clear();
+    logging::log(reslog::MESH, logging::INFO, "MeshGroup GPU buffers released");
+}
+#pragma once
+
+#include <memory>
+#include <vector>
+
+#include "../resource_base.h"
+#include "../resource_state.h"
+#include "../resource_logging.h"
+#include "../../logging/logging.h"
+#include "../../gldata/vao_data.h"
+#include "../../gldata/vbo_data.h"
+#include "../../gldata/ssbo_data.h"
+#include "../../gldata/fbo_data.h"
+#include "../../gldata/gl_data.h"
+#include "../resource_state.h"
+#include "mesh.h"
+
+struct GpuSubmesh {
+    uint32_t first_index{0};
+    uint32_t index_count{0};
+    uint32_t base_vertex{0};
+    uint32_t material_index{0};
+};
+
+/**
+ * GPU-only geometry bucket for multiple meshes.
+ */
+class MeshGroup : public ResourceBase {
+  public:
+    using Ptr = std::shared_ptr<MeshGroup>;
+
+    void add_mesh(const std::shared_ptr<Mesh>& mesh) { meshes_.push_back(mesh); }
+
+    const std::vector<GpuSubmesh>& draws() const { return draws_; }
+
+  protected:
+    void on_require_drive() override {}
+    void on_release_drive() override {}
+
+    void on_first_cpu_acquire() override {}
+    void on_last_cpu_release() override {}
+
+    void on_first_gpu_acquire() override;
+    void on_last_gpu_release() override;
+
+  private:
+    std::vector<std::shared_ptr<Mesh>> meshes_;
+    std::unique_ptr<VAOData> vao_;
+    std::unique_ptr<VBOData> vbo_positions_;
+    std::unique_ptr<VBOData> vbo_normals_;
+    std::unique_ptr<VBOData> vbo_texcoords_;
+    std::unique_ptr<VBOData> ebo_;
+    std::vector<GpuSubmesh> draws_;
+};
+#include "mesh_manager.h"
+#include "../../logging/logging.h"
+#include "../resource_logging.h"
+
+std::shared_ptr<Mesh> MeshManager::get(const std::string& path) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = meshes_.find(path);
+    if (it != meshes_.end()) return it->second;
+    auto mesh = std::make_shared<Mesh>(path, tex_mgr_, mat_mgr_);
+    meshes_[path] = mesh;
+    return mesh;
+}
+
+void MeshManager::require(const std::string& path, ResourceState state) {
+    auto mesh = get(path);
+    if (mesh) mesh->require(state);
+}
+
+void MeshManager::release(const std::string& path, ResourceState state) {
+    std::shared_ptr<Mesh> mesh;
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        auto it = meshes_.find(path);
+        if (it != meshes_.end()) mesh = it->second;
+    }
+    if (mesh) mesh->release(state);
+}
+
+void MeshManager::dump_state(int indent) const {
+    std::lock_guard<std::mutex> lock(mtx_);
+    std::string pad(indent, ' ');
+    logging::log(reslog::MESH, logging::INFO, pad + "Meshes:");
+    for (const auto& [path, mesh] : meshes_) {
+        logging::log(reslog::MESH, logging::INFO,
+                     pad + "  " + path +
+                         " cpu_users=" + std::to_string(mesh->cpu_users()) +
+                         " gpu_users=" + std::to_string(mesh->gpu_users()));
+    }
+}
+#pragma once
+
+#include <memory>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+
+#include "mesh.h"
+#include "../resource_state.h"
+
+class MeshManager {
+  public:
+    MeshManager(TextureManager* tex_mgr = nullptr, MaterialManager* mat_mgr = nullptr)
+        : tex_mgr_(tex_mgr), mat_mgr_(mat_mgr) {}
+
+    std::shared_ptr<Mesh> get(const std::string& path);
+    void require(const std::string& path, ResourceState state);
+    void release(const std::string& path, ResourceState state);
+
+    void dump_state(int indent = 0) const;
+
+  private:
+    std::unordered_map<std::string, std::shared_ptr<Mesh>> meshes_;
+    mutable std::mutex mtx_;
+    TextureManager* tex_mgr_;
+    MaterialManager* mat_mgr_;
+};
+#pragma once
+
+#include <cstddef>
+#include <memory>
+
+class Material;
+
+/**
+ * @brief Represents a sub-range of a mesh's index buffer together with a material.
+ *
+ * A Submesh is purely CPU-side information. It stores:
+ *  - @ref index_offset : first index in the mesh's index buffer.
+ *  - @ref index_count  : number of indices in this submesh.
+ *  - @ref material     : the material assigned to this submesh.
+ *
+ * Submeshes do not contain any GPU data. They are consumed later by
+ * MeshGroupGPUData when building the aggregated draw list for a chunk.
+ */
+struct Submesh {
+    /// First index within the mesh's index buffer.
+    std::size_t index_offset{0};
+
+    /// Number of indices that belong to this submesh.
+    std::size_t index_count{0};
+
+    /// Material referenced by this submesh. May be nullptr for a default material.
+    std::shared_ptr<Material> material;
+};#pragma once
+
+#include "resource_state.h"
+#include "../logging/logging.h"
+#include "resource_logging.h"
+#include <cassert>
+
+/**
+ * @brief Base class for all resources providing ref-counted state management.
+ */
+class ResourceBase {
+  public:
+    virtual ~ResourceBase() = default;
+
+    void require(ResourceState state) {
+        switch (state) {
+        case ResourceState::Drive:
+            on_require_drive();
+            break;
+        case ResourceState::Cpu: {
+            on_require_drive();
+            const int prev = cpu_users_;
+            cpu_users_++;
+            if (prev == 0) {
+                on_first_cpu_acquire();
+            }
+            break;
+        }
+        case ResourceState::Gpu: {
+            on_require_drive();
+            const int prev = gpu_users_;
+            gpu_users_++;
+            if (prev == 0) {
+                on_first_gpu_acquire();
+            }
+            break;
+        }
+        }
+    }
+
+    void release(ResourceState state) {
+        switch (state) {
+        case ResourceState::Drive:
+            on_release_drive();
+            break;
+        case ResourceState::Cpu: {
+            assert(cpu_users_ > 0);
+            cpu_users_--;
+            if (cpu_users_ == 0) {
+                on_last_cpu_release();
+            }
+            break;
+        }
+        case ResourceState::Gpu: {
+            assert(gpu_users_ > 0);
+            gpu_users_--;
+            if (gpu_users_ == 0) {
+                on_last_gpu_release();
+            }
+            break;
+        }
+        }
+    }
+
+    int cpu_users() const { return cpu_users_; }
+    int gpu_users() const { return gpu_users_; }
+
+  protected:
+    virtual void on_first_cpu_acquire() = 0;
+    virtual void on_last_cpu_release() = 0;
+    virtual void on_first_gpu_acquire() = 0;
+    virtual void on_last_gpu_release() = 0;
+
+    virtual void on_require_drive() {}
+    virtual void on_release_drive() {}
+
+  private:
+    int cpu_users_{0};
+    int gpu_users_{0};
+};
+#pragma once
+
+namespace reslog {
+constexpr int TEXTURE  = 1;
+constexpr int MATERIAL = 2;
+constexpr int MESH     = 3;
+} // namespace reslog
+#pragma once
+
+#include <string_view>
+
+enum class ResourceState : unsigned char {
+    Drive = 0,
+    Cpu   = 1,
+    Gpu   = 2
+};
+
+inline constexpr std::string_view to_string(ResourceState state) {
+    switch (state) {
+    case ResourceState::Drive: return "DRIVE";
+    case ResourceState::Cpu:   return "CPU";
+    case ResourceState::Gpu:   return "GPU";
+    }
+    return "UNKNOWN";
+}
+#pragma once
+
+// Thin wrapper to keep existing include paths working.
+// Resource states are defined in resource_state.h.
+#include "resource_state.h"
+#include "texture.h"
+#pragma once
+
+#include <memory>
+#include <string>
+
+#include "../resource_state.h"
+#include "../resource_base.h"
+#include "../../logging/logging.h"
+#include "../resource_logging.h"
+
+#include "texture_cpu_data.h"
+#include "texture_gpu_data.h"
+#include "texture_loader.h"
+
+/**
+ * Unified texture resource with CPU/GPU data managed via ResourceBase.
+ */
+class Texture : public ResourceBase, public std::enable_shared_from_this<Texture> {
+  public:
+    using Ptr = std::shared_ptr<Texture>;
+
+    explicit Texture(std::string path) : path_(std::move(path)) {}
+
+    const std::string& path() const noexcept { return path_; }
+    TextureGPUData* gpu_data() const noexcept { return gpu_data_.get(); }
+    TextureCPUData* cpu_data() const noexcept { return cpu_data_.get(); }
+
+  protected:
+    void on_require_drive() override {
+        // nothing to do; path is already known
+    }
+
+    void on_release_drive() override {}
+
+    void on_first_cpu_acquire() override {
+        if (cpu_data_ && cpu_data_->valid()) return;
+        cpu_data_ = std::make_unique<TextureCPUData>(TextureLoader::load_from_file(path_));
+        if (!cpu_data_->valid()) {
+            logging::log(reslog::TEXTURE, logging::ERROR, "Failed to load texture '" + path_ + "'");
+        } else {
+            logging::log(reslog::TEXTURE, logging::INFO, "Loaded texture to CPU '" + path_ + "'");
+        }
+    }
+
+    void on_last_cpu_release() override {
+        cpu_data_.reset();
+        logging::log(reslog::TEXTURE, logging::INFO, "Released CPU data for '" + path_ + "'");
+    }
+
+    void on_first_gpu_acquire() override {
+        if (!gpu_data_) {
+            gpu_data_ = std::make_unique<TextureGPUData>();
+        }
+        if (!cpu_data_ || !cpu_data_->valid()) {
+            on_first_cpu_acquire();
+        }
+        if (cpu_data_ && cpu_data_->valid()) {
+            gpu_data_->upload_from_cpu(*cpu_data_);
+            logging::log(reslog::TEXTURE, logging::INFO, "Uploaded texture to GPU '" + path_ + "'");
+        }
+    }
+
+    void on_last_gpu_release() override {
+        if (gpu_data_) {
+            gpu_data_->release();
+            gpu_data_.reset();
+            logging::log(reslog::TEXTURE, logging::INFO, "Released GPU data for '" + path_ + "'");
+        }
+    }
+
+  private:
+    std::string path_;
+    std::unique_ptr<TextureCPUData> cpu_data_;
+    std::unique_ptr<TextureGPUData> gpu_data_;
+};
+#include "texture_cpu_data.h"
+
+// Intentionally empty: all logic is inlined in the header.
+//
+// This translation unit exists primarily so you can easily
+// set breakpoints on TextureCPUData methods if needed.
+#pragma once
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+/**
+ * @brief CPU-side representation of texture pixel data.
+ *
+ * This struct holds raw pixel data decoded from an image file
+ * (e.g. PNG, JPG, HDR) and basic metadata such as width, height,
+ * and number of channels.
+ *
+ * It does *not* know anything about GPU objects or OpenGL; it is
+ * purely a CPU-side container that can be filled by a loader
+ * (e.g. TextureLoader) and later consumed by TextureGPUData.
+ */
+struct TextureCPUData {
+    /// Width of the texture in pixels.
+    int width = 0;
+
+    /// Height of the texture in pixels.
+    int height = 0;
+
+    /**
+     * @brief Number of channels per pixel.
+     *
+     * Typical values:
+     * - 1: R
+     * - 3: RGB
+     * - 4: RGBA
+     */
+    int channels = 0;
+
+    /**
+     * @brief Raw pixel data in row-major order.
+     *
+     * The exact layout (e.g. RGBA vs. RGB) is implied by @ref channels.
+     */
+    std::vector<std::uint8_t> pixels;
+
+    /**
+     * @brief Returns true if this object holds valid, non-empty pixel data.
+     */
+    [[nodiscard]] bool valid() const noexcept {
+        return width > 0 && height > 0 && channels > 0 && !pixels.empty();
+    }
+
+    /**
+     * @brief Clears all pixel data and resets dimensions.
+     */
+    void reset() noexcept {
+        width = 0;
+        height = 0;
+        channels = 0;
+        pixels.clear();
+        pixels.shrink_to_fit();
+    }
+};
+#include "texture_gpu_data.h"
+
+#include <stdexcept>
+
+/**
+ * @brief Uploads CPU data to the GPU texture.
+ */
+void TextureGPUData::upload_from_cpu(const TextureCPUData& cpu) {
+    if (!cpu.valid()) {
+        throw std::runtime_error("TextureGPUData::upload_from_cpu: CPU data is invalid");
+    }
+
+    // Lazily create the TextureData if needed.
+    if (!texture_) {
+        texture_ = std::make_unique<TextureData>(TextureType::TEX_2D);
+    }
+
+    TextureSpecification spec{};
+    spec.type = TextureType::TEX_2D;
+
+    // Choose a basic format based on channel count.
+    if (cpu.channels == 1) {
+        spec.internal_format = GL_R8;
+        spec.data_format     = GL_RED;
+    } else if (cpu.channels == 3) {
+        spec.internal_format = GL_RGB8;
+        spec.data_format     = GL_RGB;
+    } else {
+        // Fallback to RGBA for 2 or 4 channels.
+        spec.internal_format = GL_RGBA8;
+        spec.data_format     = GL_RGBA;
+    }
+
+    spec.data_type          = GL_UNSIGNED_BYTE;
+    spec.wrap_s             = GL_REPEAT;
+    spec.wrap_t             = GL_REPEAT;
+    spec.wrap_r             = GL_REPEAT;
+    spec.min_filter         = GL_LINEAR_MIPMAP_LINEAR;
+    spec.mag_filter         = GL_LINEAR;
+    spec.generate_mipmaps   = true;
+
+    const void* planes[6] = {
+        cpu.pixels.data(), nullptr, nullptr, nullptr, nullptr, nullptr};
+
+    texture_->set_data(cpu.width, cpu.height, spec, planes);
+}
+
+/**
+ * @brief Destroys the underlying GPU texture object.
+ */
+void TextureGPUData::release() {
+    texture_.reset(); // TextureData destructor handles GL deletion.
+}
+#pragma once
+
+#include <memory>
+
+#include "../../gldata/texture_data.h"
+#include "texture_cpu_data.h"
+
+/**
+ * @brief GPU-side representation of a texture.
+ *
+ * This class owns an underlying TextureData object, which wraps
+ * an OpenGL texture. It provides a minimal interface for uploading
+ * CPU-side pixels and releasing the GPU resource again.
+ *
+ * It does *not* handle async or job queues; that is the responsibility
+ * of the higher-level Texture / TextureManager classes.
+ */
+class TextureGPUData {
+  public:
+    using UPtr = std::unique_ptr<TextureGPUData>;
+
+    TextureGPUData() = default;
+    ~TextureGPUData() = default;
+
+    TextureGPUData(const TextureGPUData&) = delete;
+    TextureGPUData& operator=(const TextureGPUData&) = delete;
+
+    TextureGPUData(TextureGPUData&&) noexcept = default;
+    TextureGPUData& operator=(TextureGPUData&&) noexcept = default;
+
+    /**
+     * @brief Returns true if a GPU texture object has been created.
+     */
+    [[nodiscard]] bool is_valid() const noexcept { return static_cast<bool>(texture_); }
+
+    /**
+     * @brief Uploads the given CPU pixel data to the GPU, creating
+     *        or replacing the underlying TextureData.
+     *
+     * This function assumes it is called on a thread that owns a valid
+     * OpenGL context (usually the main/render thread).
+     *
+     * @param cpu CPU-side texture data. Must be valid().
+     */
+    void upload_from_cpu(const TextureCPUData& cpu);
+
+    /**
+     * @brief Releases the underlying GPU texture, if any.
+     *
+     * After calling this, @ref is_valid() returns false, and the OpenGL
+     * texture handle is destroyed.
+     */
+    void release();
+
+    /**
+     * @brief Returns the underlying TextureData, or nullptr if not valid.
+     */
+    [[nodiscard]] TextureData* texture() noexcept { return texture_.get(); }
+
+    /**
+     * @brief Returns the underlying TextureData, or nullptr if not valid.
+     */
+    [[nodiscard]] const TextureData* texture() const noexcept { return texture_.get(); }
+
+    /**
+     * @brief Returns bindless handle (or 0 if not available).
+     */
+    [[nodiscard]] GLuint64 get_handle() const {
+        if (texture_) {
+            return texture_->get_handle();
+        }
+        return 0;
+    }
+
+  private:
+    TextureData::UPtr texture_;
+};
+#include "texture_loader.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
+#include "../../logging/logging.h"
+#include "../resource_logging.h"
+
+TextureCPUData TextureLoader::load_from_file(const std::string& path) {
+    TextureCPUData result;
+
+    // stb_image returns pixels in row-major order (bottom-up/top-down
+    // depends on stbi_set_flip_vertically_on_load).
+    int width = 0;
+    int height = 0;
+    int channels_in_file = 0;
+
+    // We request 4 channels (RGBA) to simplify GPU upload logic.
+    constexpr int desired_channels = 4;
+
+    stbi_set_flip_vertically_on_load(false);
+    unsigned char* data = stbi_load(path.c_str(), &width, &height, &channels_in_file, desired_channels);
+
+    if (!data) {
+        logging::log(reslog::TEXTURE, logging::ERROR,
+                     "TextureLoader::load_from_file: failed to load image '" + path + "'");
+        return result;
+    }
+
+    result.width    = width;
+    result.height   = height;
+    result.channels = desired_channels;
+    const std::size_t size = static_cast<std::size_t>(width) *
+                             static_cast<std::size_t>(height) *
+                             static_cast<std::size_t>(desired_channels);
+    result.pixels.assign(data, data + size);
+
+    stbi_image_free(data);
+    return result;
+}
+#pragma once
+
+#include <string>
+
+#include "texture_cpu_data.h"
+
+/**
+ * @brief Helper class for loading image files into @ref TextureCPUData.
+ *
+ * This class is responsible for decoding image files from disk into
+ * raw pixel buffers using stb_image (or another image library).
+ */
+class TextureLoader {
+public:
+    /**
+     * @brief Loads image data from the given file path into CPU memory.
+     *
+     * The returned @ref TextureCPUData will contain pixel data in either
+     * 1, 3, or 4 channels depending on the original file. By default,
+     * the loader will request 4 channels (RGBA) for simplicity.
+     *
+     * On failure, the returned TextureCPUData will have width/height 0
+     * and an empty pixel buffer.
+     *
+     * @param path Filesystem path to the image file.
+     * @return Loaded CPU texture data.
+     */
+    static TextureCPUData load_from_file(const std::string& path);
+};
+#include "texture_manager.h"
+
+#include <utility>
+
+std::shared_ptr<Texture> TextureManager::get(const std::string& path) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = textures_.find(path);
+    if (it != textures_.end()) {
+        return it->second;
+    }
+    auto tex = std::make_shared<Texture>(path);
+    textures_[path] = tex;
+    return tex;
+}
+
+void TextureManager::require(const std::string& path, ResourceState state) {
+    auto tex = get(path);
+    if (tex) tex->require(state);
+}
+
+void TextureManager::release(const std::string& path, ResourceState state) {
+    std::shared_ptr<Texture> tex;
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        auto it = textures_.find(path);
+        if (it != textures_.end()) tex = it->second;
+    }
+    if (tex) tex->release(state);
+}
+
+void TextureManager::dump_state(int indent) const {
+    std::lock_guard<std::mutex> lock(mtx_);
+    std::string pad(indent, ' ');
+    logging::log(reslog::TEXTURE, logging::INFO, pad + "Textures:");
+    for (const auto& [path, tex] : textures_) {
+        logging::log(reslog::TEXTURE, logging::INFO,
+                     pad + "  " + path +
+                         " cpu_users=" + std::to_string(tex->cpu_users()) +
+                         " gpu_users=" + std::to_string(tex->gpu_users()));
+    }
+}
+#pragma once
+
+#include <memory>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+
+#include "texture.h"
+#include "../resource_state.h"
+
+class TextureManager {
+  public:
+    TextureManager() = default;
+
+    std::shared_ptr<Texture> get(const std::string& path);
+
+    void require(const std::string& path, ResourceState state);
+    void release(const std::string& path, ResourceState state);
+
+    void dump_state(int indent = 0) const;
+
+  private:
+    std::unordered_map<std::string, std::shared_ptr<Texture>> textures_;
+    mutable std::mutex mtx_;
+};
